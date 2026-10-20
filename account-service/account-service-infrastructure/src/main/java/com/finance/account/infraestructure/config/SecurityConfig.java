@@ -13,7 +13,7 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http, OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(authz -> authz
@@ -21,7 +21,8 @@ public class SecurityConfig {
 //                        .requestMatchers("/api/usuarios/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                .oauth2Login(oauth2 -> {} );
+                .oauth2Login(oauth2 ->
+                        oauth2.successHandler(oAuth2LoginSuccessHandler));
 
         return http.build();
     }
