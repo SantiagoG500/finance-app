@@ -10,7 +10,7 @@ import java.util.UUID;
 public class SincGoogleUserUseCase {
     private final UsuarioGateWay usuarioGateWay;
 
-    public Usuario iniciar(UUID externalId, String email, String displayName) {
+    public Usuario iniciar(String externalId, String email, String displayName) {
         Usuario usuarioEncontrado = usuarioGateWay.obtenerUsuarioPorExternalId(externalId);
 
         if (usuarioEncontrado != null) return  usuarioEncontrado;

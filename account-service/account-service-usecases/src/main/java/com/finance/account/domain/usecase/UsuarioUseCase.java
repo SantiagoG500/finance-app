@@ -5,13 +5,12 @@ import com.finance.account.domain.model.UsuarioGateWay;
 import lombok.RequiredArgsConstructor;
 
 import java.util.NoSuchElementException;
-import java.util.UUID;
 
 @RequiredArgsConstructor
 public class UsuarioUseCase {
     private final UsuarioGateWay uGateway;
 
-    public Usuario obtenerUsuarioPorExternalId(UUID id) {
+    public Usuario obtenerUsuarioPorExternalId(String id) {
         System.out.println(">>> [USE CASE] Fetching user with ID: " + id);
         Usuario usuario = uGateway.obtenerUsuarioPorExternalId(id);
 
@@ -26,7 +25,7 @@ public class UsuarioUseCase {
         return uGateway.actualizarUsuario(usuario);
     }
 
-    public void eliminarUsuarioPorExternalId(UUID id) {
+    public void eliminarUsuarioPorExternalId(String id) {
         Usuario usuario =  uGateway.obtenerUsuarioPorExternalId(id);
         validarUsuario(usuario);
         uGateway.eliminarUsuarioPorExternalId(id);

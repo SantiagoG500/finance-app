@@ -22,7 +22,7 @@ public class UsuarioEntity {
     private UUID id;
 
     @Column(nullable = false, unique = true)
-    private UUID externalId;
+    private String externalId;
 
     @Column(nullable = false, unique = true)
     private String email;

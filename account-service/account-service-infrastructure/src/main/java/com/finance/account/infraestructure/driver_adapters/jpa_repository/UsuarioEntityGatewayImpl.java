@@ -8,7 +8,6 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
-import java.util.UUID;
 
 @Repository
 @RequiredArgsConstructor
@@ -26,7 +25,7 @@ public class UsuarioEntityGatewayImpl implements UsuarioGateWay {
     }
 
     @Override
-    public Usuario obtenerUsuarioPorExternalId(UUID id) {
+    public Usuario obtenerUsuarioPorExternalId(String id) {
         Optional<UsuarioEntity> usuarioEntity = uJpaRepository.findByExternalId(id);
 
         return usuarioEntity.map(usuarioMapper::toUser).orElse(null);
@@ -48,7 +47,7 @@ public class UsuarioEntityGatewayImpl implements UsuarioGateWay {
     }
 
     @Override
-    public void eliminarUsuarioPorExternalId(UUID id) {
+    public void eliminarUsuarioPorExternalId(String id) {
         uJpaRepository.deleteByExternalId(id);
     }
 }

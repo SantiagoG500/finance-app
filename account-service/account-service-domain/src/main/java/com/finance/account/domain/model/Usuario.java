@@ -14,7 +14,7 @@ import java.util.UUID;
 public class Usuario {
 
     private UUID id;
-    private UUID externalId;
+    private String externalId;
     private String email;
     private String displayName;
     private String baseCurrency;

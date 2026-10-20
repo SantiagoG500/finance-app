@@ -8,8 +8,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
-
 // TODO: Mappings could improve
 //       add DTOs and improved validation if needed
 
@@ -32,7 +30,7 @@ public class UsuarioController {
     }
 
     @GetMapping("/get/{id}")
-    public ResponseEntity<Usuario> obtenerUsuarioPorExternalId(@PathVariable("id") UUID id) {
+    public ResponseEntity<Usuario> obtenerUsuarioPorExternalId(@PathVariable("id") String id) {
         System.out.println(">>> [GET CONTROLLER] Received path variable ID: " + id);
         Usuario usuario = usuarioUseCase.obtenerUsuarioPorExternalId(id);
 
@@ -47,7 +45,7 @@ public class UsuarioController {
     }
 
     @DeleteMapping("/delete/{id}")
-    public ResponseEntity<String> eliminarUsuarioPorExternalId(@PathVariable("id") UUID id) {
+    public ResponseEntity<String> eliminarUsuarioPorExternalId(@PathVariable("id") String id) {
         usuarioUseCase.eliminarUsuarioPorExternalId(id);
         return new ResponseEntity<>("Usuario eliminado exitosamente", HttpStatus.OK);
     }
