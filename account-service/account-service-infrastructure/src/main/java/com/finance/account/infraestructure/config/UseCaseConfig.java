@@ -16,10 +16,7 @@ public class UseCaseConfig {
     }
 
     @Bean
-    public SincGoogleUserUseCase sincGoogleUserUseCase(
-            UsuarioGateWay usuarioGateWay,
-            NotificationGateway notificationGateway
-    ) {
+    public SincGoogleUserUseCase sincGoogleUserUseCase(UsuarioGateWay usuarioGateWay, NotificationGateway notificationGateway) {
         return new SincGoogleUserUseCase(usuarioGateWay, notificationGateway);
     }
 }
