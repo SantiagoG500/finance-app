@@ -1,5 +1,6 @@
 package com.finance.account.infraestructure.config;
 
+import com.finance.account.domain.gateway.NotificationGateway;
 import com.finance.account.domain.model.UsuarioGateWay;
 import com.finance.account.domain.usecase.SincGoogleUserUseCase;
 import com.finance.account.domain.usecase.UsuarioUseCase;
@@ -15,7 +16,7 @@ public class UseCaseConfig {
     }
 
     @Bean
-    public SincGoogleUserUseCase sincGoogleUserUseCase(UsuarioGateWay usuarioGateWay) {
-        return new SincGoogleUserUseCase(usuarioGateWay);
+    public SincGoogleUserUseCase sincGoogleUserUseCase(UsuarioGateWay usuarioGateWay, NotificationGateway notificationGateway) {
+        return new SincGoogleUserUseCase(usuarioGateWay, notificationGateway);
     }
 }
