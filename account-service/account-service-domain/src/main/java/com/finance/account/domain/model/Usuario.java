@@ -14,9 +14,11 @@ import java.util.UUID;
 public class Usuario {
 
     private UUID id;
-    private String externalId;
     private String email;
-    private String displayName;
+    private String passwordHash;
+    private String fullName;
+    private String avatarUrl;
     private String baseCurrency;
+    private Boolean isActive;
 
 }

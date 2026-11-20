@@ -5,19 +5,27 @@ import com.finance.account.domain.model.UsuarioGateWay;
 import lombok.RequiredArgsConstructor;
 
 import java.util.NoSuchElementException;
+import java.util.UUID;
 
 @RequiredArgsConstructor
 public class UsuarioUseCase {
     private final UsuarioGateWay uGateway;
 
-    public Usuario obtenerUsuarioPorExternalId(String id) {
-        System.out.println(">>> [USE CASE] Fetching user with ID: " + id);
-        Usuario usuario = uGateway.obtenerUsuarioPorExternalId(id);
-
-        System.out.println(">>> [USE CASE] User retrieved from DB gateway: " + usuario);
+    public Usuario obtenerUsuarioPorId(UUID id) {
+        Usuario usuario = uGateway.obtenerUsuarioPorId(id);
         validarUsuario(usuario);
-
         return usuario;
+    }
+
+    public Usuario obtenerUsuarioPorEmail(String email) {
+        Usuario usuario = uGateway.obtenerUsuarioPorEmail(email);
+        validarUsuario(usuario);
+        return usuario;
+    }
+
+    public Usuario guardarUsuario(Usuario usuario) {
+        validarUsuario(usuario);
+        return uGateway.guardarUsuario(usuario);
     }
 
     public Usuario actualizarUsuario(Usuario usuario) {
@@ -25,25 +33,18 @@ public class UsuarioUseCase {
         return uGateway.actualizarUsuario(usuario);
     }
 
-    public void eliminarUsuarioPorExternalId(String id) {
-        Usuario usuario =  uGateway.obtenerUsuarioPorExternalId(id);
+    public void eliminarUsuarioPorId(UUID id) {
+        Usuario usuario = uGateway.obtenerUsuarioPorId(id);
         validarUsuario(usuario);
-        uGateway.eliminarUsuarioPorExternalId(id);
+        uGateway.eliminarUsuarioPorId(id);
     }
 
-    public void validarUsuario (Usuario usuario) {
+    public void validarUsuario(Usuario usuario) {
         if (usuario == null) {
             throw new NoSuchElementException("Usuario no puede ser null");
         }
-
-//      TODO: See if it makes sense to have null ids during the data file cycle
-
-        if (usuario.getEmail() == null){
-            throw new IllegalArgumentException("Email no puede ser nulo.");
+        if (usuario.getEmail() == null || usuario.getEmail().isBlank()) {
+            throw new IllegalArgumentException("Email no puede ser nulo o vacío.");
         }
-        if (usuario.getDisplayName() == null){
-            throw new IllegalArgumentException("Nombre no puede ser nulo.");
-        }
-
     }
 }

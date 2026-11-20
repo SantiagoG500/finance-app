@@ -8,6 +8,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 @RequiredArgsConstructor
@@ -25,12 +26,16 @@ public class UsuarioEntityGatewayImpl implements UsuarioGateWay {
     }
 
     @Override
-    public Usuario obtenerUsuarioPorExternalId(String id) {
-        Optional<UsuarioEntity> usuarioEntity = uJpaRepository.findByExternalId(id);
-
+    public Usuario obtenerUsuarioPorId(UUID id) {
+        Optional<UsuarioEntity> usuarioEntity = uJpaRepository.findById(id);
         return usuarioEntity.map(usuarioMapper::toUser).orElse(null);
     }
 
+    @Override
+    public Usuario obtenerUsuarioPorEmail(String email) {
+        Optional<UsuarioEntity> usuarioEntity = uJpaRepository.findByEmail(email);
+        return usuarioEntity.map(usuarioMapper::toUser).orElse(null);
+    }
 
     @Override
     public Usuario actualizarUsuario(Usuario usuario) {
@@ -38,16 +43,14 @@ public class UsuarioEntityGatewayImpl implements UsuarioGateWay {
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
 
         UsuarioEntity datosNuevos = usuarioMapper.toEntity(usuario);
-        BeanUtils.copyProperties(datosNuevos, existente, "id");
+        BeanUtils.copyProperties(datosNuevos, existente, "id", "createdAt");
 
-        // 4. Guardar los cambios (Hibernate ejecutará un UPDATE automáticamente)
         UsuarioEntity usuarioActualizado = uJpaRepository.save(existente);
-
         return usuarioMapper.toUser(usuarioActualizado);
     }
 
     @Override
-    public void eliminarUsuarioPorExternalId(String id) {
-        uJpaRepository.deleteByExternalId(id);
+    public void eliminarUsuarioPorId(UUID id) {
+        uJpaRepository.deleteById(id);
     }
 }
