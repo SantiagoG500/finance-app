@@ -26,4 +26,5 @@ spring:
           issuer-uri: http://localhost:8081/issuer-path
 
 server:
-  port: ${SERVER_PORT:8082}
+  port: 8081
+
