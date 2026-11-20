@@ -5,6 +5,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -13,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.UUID;
 
+@Slf4j
 @Component
 public class JwtTokenAdapter implements TokenGateway {
 
@@ -58,8 +60,13 @@ public class JwtTokenAdapter implements TokenGateway {
     public boolean validateToken(String token) {
         try {
             Claims claims = getClaims(token);
-            return claims.getExpiration().after(new Date());
+            boolean isValid = claims.getExpiration().after(new Date());
+            if (!isValid) {
+                log.warn("JWT token is expired (expiration: {})", claims.getExpiration());
+            }
+            return isValid;
         } catch (JwtException | IllegalArgumentException e) {
+            log.warn("JWT validation error: {}", e.getMessage());
             return false;
         }
     }
