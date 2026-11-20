@@ -43,12 +43,14 @@ class UsuarioControllerTest {
     private TokenGateway tokenGateway;
 
     @Test
-    @DisplayName("Should return 403 Forbidden when requesting without authentication token")
+    @DisplayName("Should return 401 Unauthorized when requesting without authentication token")
     void shouldDenyAccessWhenUnauthenticated() throws Exception {
         UUID userId = UUID.randomUUID();
 
         mockMvc.perform(get("/api/usuarios/get/{id}", userId))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"));
     }
 
     @Test
@@ -73,6 +75,29 @@ class UsuarioControllerTest {
                 .andExpect(jsonPath("$.id").value(userId.toString()))
                 .andExpect(jsonPath("$.email").value("test@example.com"))
                 .andExpect(jsonPath("$.fullName").value("Test User"));
+    }
+
+    @Test
+    @DisplayName("Should return 200 OK when fetching user by ID using standard REST alias /{id}")
+    @WithMockUser
+    void shouldGetUserByIdUsingRestAlias() throws Exception {
+        UUID userId = UUID.randomUUID();
+        Usuario mockUser = new Usuario(
+                userId,
+                "alias@example.com",
+                "hashedpassword",
+                "Alias User",
+                null,
+                "USD",
+                true
+        );
+
+        when(usuarioUseCase.obtenerUsuarioPorId(eq(userId))).thenReturn(mockUser);
+
+        mockMvc.perform(get("/api/usuarios/{id}", userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(userId.toString()))
+                .andExpect(jsonPath("$.email").value("alias@example.com"));
     }
 
     @Test
@@ -181,5 +206,31 @@ class UsuarioControllerTest {
                         .header("Authorization", "Bearer " + validToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("bearer@example.com"));
+    }
+
+    @Test
+    @DisplayName("Should authenticate even if token is sent without Bearer prefix")
+    void shouldAuthenticateWithRawToken() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String validToken = "valid.raw.token";
+
+        when(tokenGateway.validateToken(validToken)).thenReturn(true);
+        when(tokenGateway.extractEmail(validToken)).thenReturn("raw@example.com");
+
+        Usuario mockUser = new Usuario(
+                userId,
+                "raw@example.com",
+                "hashedpassword",
+                "Raw User",
+                null,
+                "USD",
+                true
+        );
+        when(usuarioUseCase.obtenerUsuarioPorId(eq(userId))).thenReturn(mockUser);
+
+        mockMvc.perform(get("/api/usuarios/get/{id}", userId)
+                        .header("Authorization", validToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("raw@example.com"));
     }
 }

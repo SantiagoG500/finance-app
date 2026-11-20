@@ -16,31 +16,31 @@ public class UsuarioController {
 
     private final UsuarioUseCase usuarioUseCase;
 
-    @PostMapping("/save")
+    @PostMapping({"/save", ""})
     public ResponseEntity<Usuario> guardarUsuario(@RequestBody Usuario usuario) {
         Usuario usuarioCreado = usuarioUseCase.guardarUsuario(usuario);
         return new ResponseEntity<>(usuarioCreado, HttpStatus.CREATED);
     }
 
-    @GetMapping("/get/{id}")
+    @GetMapping({"/get/{id}", "/{id}"})
     public ResponseEntity<Usuario> obtenerUsuarioPorId(@PathVariable("id") UUID id) {
         Usuario usuario = usuarioUseCase.obtenerUsuarioPorId(id);
         return new ResponseEntity<>(usuario, HttpStatus.OK);
     }
 
-    @GetMapping("/email/{email}")
+    @GetMapping({"/email/{email}", "/by-email/{email}"})
     public ResponseEntity<Usuario> obtenerUsuarioPorEmail(@PathVariable("email") String email) {
         Usuario usuario = usuarioUseCase.obtenerUsuarioPorEmail(email);
         return new ResponseEntity<>(usuario, HttpStatus.OK);
     }
 
-    @PutMapping("/update")
+    @PutMapping({"/update", ""})
     public ResponseEntity<Usuario> actualizarUsuario(@RequestBody Usuario usuario) {
         Usuario usuarioActualizado = usuarioUseCase.actualizarUsuario(usuario);
         return new ResponseEntity<>(usuarioActualizado, HttpStatus.OK);
     }
 
-    @DeleteMapping("/delete/{id}")
+    @DeleteMapping({"/delete/{id}", "/{id}"})
     public ResponseEntity<String> eliminarUsuarioPorId(@PathVariable("id") UUID id) {
         usuarioUseCase.eliminarUsuarioPorId(id);
         return new ResponseEntity<>("Usuario eliminado exitosamente", HttpStatus.OK);
