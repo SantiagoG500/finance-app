@@ -7,7 +7,7 @@ services:
 
 spring:
   application:
-    name: ${SPRING_APPLICATION_NAME}
+    name: ${SPRING_APPLICATION_NAME:account-service}
 
   datasource:
     url: ${DATABASE_URL}
@@ -25,14 +25,6 @@ spring:
         format_sql: ${JPA_PROPERTIES_HIBERNATE_FORMAT_SQL:true}
     open-in-view: ${JPA_OPEN_IN_VIEW:false}
 
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            client-id: ${OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID}
-            client-secret: ${OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET}
-            scope:
-              - openid
-              - profile
-              - email
+jwt:
+  secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+  expiration-ms: ${JWT_EXPIRATION_MS:86400000}
