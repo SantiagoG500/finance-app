@@ -1,13 +1,17 @@
 package com.finance.account.domain.model;
 
+import java.util.UUID;
+
 public interface UsuarioGateWay {
 
     Usuario guardarUsuario(Usuario usuario);
 
-    Usuario obtenerUsuarioPorExternalId(String id);
+    Usuario obtenerUsuarioPorId(UUID id);
+
+    Usuario obtenerUsuarioPorEmail(String email);
 
     Usuario actualizarUsuario(Usuario usuario);
 
-    void eliminarUsuarioPorExternalId(String id);
+    void eliminarUsuarioPorId(UUID id);
 
 }

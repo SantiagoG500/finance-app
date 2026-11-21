@@ -6,6 +6,8 @@ import com.finance.transaction.infraestructure.entry_points.dto.TransaccionReque
 import com.finance.transaction.infraestructure.entry_points.dto.TransaccionResponseDTO;
 import org.springframework.stereotype.Component;
 
+import java.util.UUID;
+
 @Component
 public class TransaccionMapper {
 
@@ -14,9 +16,9 @@ public class TransaccionMapper {
             return null;
         }
         return new Transaccion(
-                transaccionEntity.getId(),
-                transaccionEntity.getExternalUserId(),
-                transaccionEntity.getCategoryId(),
+                transaccionEntity.getId() != null ? transaccionEntity.getId().toString() : null,
+                transaccionEntity.getUserId() != null ? transaccionEntity.getUserId().toString() : null,
+                transaccionEntity.getCategoryId() != null ? transaccionEntity.getCategoryId().toString() : null,
                 transaccionEntity.getAmount(),
                 transaccionEntity.getCurrency(),
                 transaccionEntity.getType(),
@@ -32,9 +34,9 @@ public class TransaccionMapper {
             return null;
         }
         return new TransaccionEntity(
-                transaccion.getId(),
-                transaccion.getExternalUserId(),
-                transaccion.getCategoryId(),
+                parseUuid(transaccion.getId()),
+                parseUuid(transaccion.getExternalUserId()),
+                parseUuid(transaccion.getCategoryId()),
                 transaccion.getAmount(),
                 transaccion.getCurrency(),
                 transaccion.getType(),
@@ -45,13 +47,13 @@ public class TransaccionMapper {
         );
     }
 
-    public Transaccion requestDtoToTransaccion(TransaccionRequestDTO request, String externalUserId) {
+    public Transaccion requestDtoToTransaccion(TransaccionRequestDTO request, String userId) {
         if (request == null) {
             return null;
         }
         return new Transaccion(
                 request.getId(),
-                externalUserId,
+                userId,
                 request.getCategoryId(),
                 request.getAmount(),
                 request.getCurrency(),
@@ -59,7 +61,7 @@ public class TransaccionMapper {
                 request.getFrequency(),
                 request.getDescription(),
                 request.getTransactionDate(),
-                null // Manejado por UseCase
+                null // Manejado por UseCase o @CreatedDate
         );
     }
 
@@ -80,4 +82,10 @@ public class TransaccionMapper {
         );
     }
 
+    private UUID parseUuid(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        return UUID.fromString(value.trim());
+    }
 }

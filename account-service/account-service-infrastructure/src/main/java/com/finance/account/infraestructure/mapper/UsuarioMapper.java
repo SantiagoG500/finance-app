@@ -8,12 +8,15 @@ import org.springframework.stereotype.Component;
 public class UsuarioMapper {
 
     public Usuario toUser(UsuarioEntity entity) {
+        if (entity == null) return null;
         return new Usuario(
             entity.getId(),
-            entity.getExternalId(),
             entity.getEmail(),
-            entity.getDisplayName(),
-            ""
+            entity.getPasswordHash(),
+            entity.getFullName(),
+            entity.getAvatarUrl(),
+            entity.getBaseCurrency(),
+            entity.getIsActive()
         );
     }
 
@@ -21,11 +24,13 @@ public class UsuarioMapper {
         if (usuario == null) return null;
 
         UsuarioEntity entity = new UsuarioEntity();
-
         entity.setId(usuario.getId());
-        entity.setExternalId(usuario.getExternalId());
         entity.setEmail(usuario.getEmail());
-        entity.setDisplayName(usuario.getDisplayName());
+        entity.setPasswordHash(usuario.getPasswordHash());
+        entity.setFullName(usuario.getFullName());
+        entity.setAvatarUrl(usuario.getAvatarUrl());
+        entity.setBaseCurrency(usuario.getBaseCurrency());
+        entity.setIsActive(usuario.getIsActive());
 
         return entity;
     }

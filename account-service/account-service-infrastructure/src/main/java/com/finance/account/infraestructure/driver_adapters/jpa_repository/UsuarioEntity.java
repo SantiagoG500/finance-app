@@ -22,24 +22,40 @@ public class UsuarioEntity {
     private UUID id;
 
     @Column(nullable = false, unique = true)
-    private String externalId;
-
-    @Column(nullable = false, unique = true)
     private String email;
 
-    private String displayName;
+    @Column(name = "password_hash", nullable = false)
+    private String passwordHash;
+
+    @Column(name = "full_name", length = 150)
+    private String fullName;
+
+    @Column(name = "avatar_url")
     private String avatarUrl;
 
-    @Column(length = 3)
-    private String baseCurrency;
+    @Column(name = "base_currency", length = 3)
+    private String baseCurrency = "USD";
 
+    @Column(name = "is_active")
+    private Boolean isActive = true;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
     @PrePersist
     public void prePersist() {
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now();
+        this.createdAt = now;
+        this.updatedAt = now;
+        if (this.isActive == null) {
+            this.isActive = true;
+        }
+        if (this.baseCurrency == null) {
+            this.baseCurrency = "USD";
+        }
     }
 
     @PreUpdate

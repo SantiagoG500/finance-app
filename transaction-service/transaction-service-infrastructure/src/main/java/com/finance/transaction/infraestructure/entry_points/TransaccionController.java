@@ -11,12 +11,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("api/v1/finances")
+@RequestMapping("/api/v1/finances")
 @RequiredArgsConstructor
 @Validated
 public class TransaccionController {
@@ -26,19 +26,15 @@ public class TransaccionController {
 
     @PostMapping("/save")
     public ResponseEntity<TransaccionResponseDTO> guardarTransaccion(
-           @Valid @RequestBody TransaccionRequestDTO request,
-           @AuthenticationPrincipal OAuth2User usuario
+            @Valid @RequestBody TransaccionRequestDTO request,
+            @AuthenticationPrincipal Jwt jwt
     ) {
-        if (usuario == null) {
+        String userId = extractUserId(jwt);
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        String externalUserId = usuario.getAttribute("sub");
-        if (externalUserId == null || externalUserId.trim().isEmpty()) {
-            externalUserId = usuario.getName();
-        }
-
-        Transaccion transaccion = transaccionMapper.requestDtoToTransaccion(request, externalUserId);
+        Transaccion transaccion = transaccionMapper.requestDtoToTransaccion(request, userId);
         Transaccion transaccionCreada = transaccionUseCase.guardarTransaccion(transaccion);
 
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -48,18 +44,14 @@ public class TransaccionController {
     @GetMapping("/get/{id}")
     public ResponseEntity<TransaccionResponseDTO> obtenerTransaccionPorID(
             @PathVariable("id") @NotBlank(message = "ID no debe estar vacío") String id,
-            @AuthenticationPrincipal OAuth2User usuario
+            @AuthenticationPrincipal Jwt jwt
     ) {
-        if (usuario == null) {
+        String userId = extractUserId(jwt);
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        String externalUserId = usuario.getAttribute("sub");
-        if (externalUserId == null || externalUserId.trim().isEmpty()) {
-            externalUserId = usuario.getName();
-        }
-
-        Transaccion transaccion = transaccionUseCase.obtenerTransaccion(id, externalUserId);
+        Transaccion transaccion = transaccionUseCase.obtenerTransaccion(id, userId);
         if (transaccion == null) {
             return ResponseEntity.notFound().build();
         }
@@ -70,18 +62,14 @@ public class TransaccionController {
     @PutMapping("/update")
     public ResponseEntity<TransaccionResponseDTO> actualizarTransaccion(
             @Valid @RequestBody TransaccionRequestDTO request,
-            @AuthenticationPrincipal OAuth2User usuario
+            @AuthenticationPrincipal Jwt jwt
     ) {
-        if (usuario == null) {
+        String userId = extractUserId(jwt);
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        String externalUserId = usuario.getAttribute("sub");
-        if (externalUserId == null || externalUserId.trim().isEmpty()) {
-            externalUserId = usuario.getName();
-        }
-
-        Transaccion transaccion = transaccionMapper.requestDtoToTransaccion(request, externalUserId);
+        Transaccion transaccion = transaccionMapper.requestDtoToTransaccion(request, userId);
         Transaccion transaccionActualizada = transaccionUseCase.actualizarTransaccion(transaccion);
 
         return ResponseEntity.ok(transaccionMapper.transaccionToResponseDto(transaccionActualizada));
@@ -90,19 +78,21 @@ public class TransaccionController {
     @DeleteMapping("/delete/{id}")
     public ResponseEntity<Void> deleteTransaccion(
             @PathVariable("id") @NotBlank(message = "ID no debe estar vacío") String id,
-            @AuthenticationPrincipal OAuth2User usuario
+            @AuthenticationPrincipal Jwt jwt
     ) {
-        if (usuario == null) {
+        String userId = extractUserId(jwt);
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        String externalUserId = usuario.getAttribute("sub");
-        if (externalUserId == null || externalUserId.trim().isEmpty()) {
-            externalUserId = usuario.getName();
-        }
-
-        transaccionUseCase.eliminarTransaccion(id, externalUserId);
+        transaccionUseCase.eliminarTransaccion(id, userId);
         return ResponseEntity.noContent().build();
     }
 
+    private String extractUserId(Jwt jwt) {
+        if (jwt == null || jwt.getSubject() == null || jwt.getSubject().trim().isEmpty()) {
+            return null;
+        }
+        return jwt.getSubject();
+    }
 }

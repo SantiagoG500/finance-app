@@ -17,6 +17,5 @@
         <module>account-service-boot</module>
         <module>account-service-domain</module>
         <module>account-service-infrastructure</module>
-        <module>account-service-usecases</module>
     </modules>
 </project>
