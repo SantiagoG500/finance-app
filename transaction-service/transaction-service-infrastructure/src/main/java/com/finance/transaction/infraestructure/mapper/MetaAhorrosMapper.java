@@ -6,6 +6,8 @@ import com.finance.transaction.infraestructure.entry_points.dto.MetaAhorroReques
 import com.finance.transaction.infraestructure.entry_points.dto.MetaAhorroResponseDTO;
 import org.springframework.stereotype.Component;
 
+import java.util.UUID;
+
 @Component
 public class MetaAhorrosMapper {
 
@@ -16,8 +18,8 @@ public class MetaAhorrosMapper {
             return null;
         }
         return new MetaAhorro(
-                metaAhorrosEntity.getId(),
-                metaAhorrosEntity.getExternalUserId(),
+                metaAhorrosEntity.getId() != null ? metaAhorrosEntity.getId().toString() : null,
+                metaAhorrosEntity.getUserId() != null ? metaAhorrosEntity.getUserId().toString() : null,
                 metaAhorrosEntity.getTitle(),
                 metaAhorrosEntity.getTargetAmount(),
                 metaAhorrosEntity.getCurrentAmount(),
@@ -33,14 +35,14 @@ public class MetaAhorrosMapper {
             return null;
         }
         return new MetaAhorrosEntity(
-                metaAhorro.getId(),
-                metaAhorro.getExternalUserId(),
+                parseUuid(metaAhorro.getId()),
+                parseUuid(metaAhorro.getExternalUserId()),
                 metaAhorro.getTitle(),
                 metaAhorro.getTargetAmount(),
                 metaAhorro.getCurrentAmount(),
                 metaAhorro.getMonthlyContribution(),
-                metaAhorro.getCurrency(),
                 metaAhorro.getTargetDate(),
+                metaAhorro.getCurrency(),
                 metaAhorro.getCreatedAt()
         );
     }
@@ -56,24 +58,24 @@ public class MetaAhorrosMapper {
 
     // --- DTO <-> Domain Mappings ---
 
-    public MetaAhorro requestDtoToMetaAhorro(MetaAhorroRequestDTO request, String externalUserId) {
-        return requestDtoToMetaAhorro(null, request, externalUserId);
+    public MetaAhorro requestDtoToMetaAhorro(MetaAhorroRequestDTO request, String userId) {
+        return requestDtoToMetaAhorro(null, request, userId);
     }
 
-    public MetaAhorro requestDtoToMetaAhorro(String id, MetaAhorroRequestDTO request, String externalUserId) {
+    public MetaAhorro requestDtoToMetaAhorro(String id, MetaAhorroRequestDTO request, String userId) {
         if (request == null) {
             return null;
         }
         return new MetaAhorro(
                 id,
-                externalUserId,
+                userId,
                 request.getTitle(),
                 request.getTargetAmount(),
                 request.getCurrentAmount(),
                 request.getMonthlyContribution(),
                 request.getCurrency(),
                 request.getTargetDate(),
-                null // Handled by UseCase
+                null // Handled by UseCase or @CreatedDate
         );
     }
 
@@ -93,4 +95,10 @@ public class MetaAhorrosMapper {
         );
     }
 
+    private UUID parseUuid(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        return UUID.fromString(value.trim());
+    }
 }

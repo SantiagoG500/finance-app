@@ -6,62 +6,73 @@ import com.finance.transaction.infraestructure.driver_adapters.jpa_repository.en
 import com.finance.transaction.infraestructure.driver_adapters.jpa_repository.repository.TransaccionJpaRepository;
 import com.finance.transaction.infraestructure.mapper.TransaccionMapper;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
-
-// TODO: Queries have to be made with the ID, externalID, or both?
 
 @Repository
 @RequiredArgsConstructor
 public class TransaccionAdapter implements TransaccionGateway {
 
-    private final TransaccionJpaRepository tJpaRepository;
-    private final TransaccionMapper transaccionMapper;
+    private final TransaccionJpaRepository jpaRepository;
+    private final TransaccionMapper mapper;
 
     @Override
     public Transaccion guardarTransaccion(Transaccion transaction) {
-        TransaccionEntity entity = transaccionMapper.transaccionToEntity(transaction);
-        TransaccionEntity savedEntity = tJpaRepository.save(entity);
-
-        return transaccionMapper.entityToTransaccion(savedEntity);
+        TransaccionEntity entity = mapper.transaccionToEntity(transaction);
+        TransaccionEntity savedEntity = jpaRepository.save(entity);
+        return mapper.entityToTransaccion(savedEntity);
     }
 
     @Override
-    public Transaccion obtenerTransaccion(String id, String externalId) {
-        Optional<TransaccionEntity> transaccionEntity = tJpaRepository.findById(externalId);
+    public Transaccion obtenerTransaccion(String id, String userId) {
+        UUID txUuid = UUID.fromString(id);
+        UUID userUuid = UUID.fromString(userId);
 
-        return transaccionEntity.map(transaccionMapper::entityToTransaccion).orElse(null);
+        return jpaRepository.findByIdAndUserId(txUuid, userUuid)
+                .map(mapper::entityToTransaccion)
+                .orElse(null);
     }
 
-//   TODO: Ask user id?
-//         Error handling could be better
     @Override
     public Transaccion actualizarTransaccion(Transaccion transaccion) {
-        TransaccionEntity existente = tJpaRepository.findById(transaccion.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Transacción no encontrada"));
+        UUID txUuid = UUID.fromString(transaccion.getId());
+        UUID userUuid = UUID.fromString(transaccion.getExternalUserId());
 
-        TransaccionEntity datosNuevo = transaccionMapper.transaccionToEntity(transaccion);
-        BeanUtils.copyProperties(existente, datosNuevo, "id");
+        TransaccionEntity existente = jpaRepository.findByIdAndUserId(txUuid, userUuid)
+                .orElseThrow(() -> new IllegalArgumentException("Transacción no encontrada o no pertenece al usuario"));
 
-        TransaccionEntity transaccionActualizada =  tJpaRepository.save(datosNuevo);
+        existente.setCategoryId(UUID.fromString(transaccion.getCategoryId()));
+        existente.setAmount(transaccion.getAmount());
+        existente.setCurrency(transaccion.getCurrency());
+        existente.setType(transaccion.getType());
+        existente.setFrequency(transaccion.getFrequency());
+        existente.setDescription(transaccion.getDescription());
+        existente.setTransactionDate(transaccion.getTransactionDate());
 
-        return transaccionMapper.entityToTransaccion(transaccionActualizada);
+        TransaccionEntity transaccionActualizada = jpaRepository.save(existente);
+        return mapper.entityToTransaccion(transaccionActualizada);
     }
 
     @Override
-    public void eliminarTransaccion(String id, String externalId) {
-        tJpaRepository.deleteById(externalId);
+    @Transactional
+    public void eliminarTransaccion(String id, String userId) {
+        UUID txUuid = UUID.fromString(id);
+        UUID userUuid = UUID.fromString(userId);
+
+        jpaRepository.deleteByIdAndUserId(txUuid, userUuid);
     }
 
     @Override
-    public List<Transaccion> obtenerTransaccionesPorUsuario(String externalId) {
-        return tJpaRepository.findByExternalUserId(externalId)
+    public List<Transaccion> obtenerTransaccionesPorUsuario(String userId) {
+        UUID userUuid = UUID.fromString(userId);
+
+        return jpaRepository.findByUserId(userUuid)
                 .stream()
-                .map(transaccionMapper::entityToTransaccion)
+                .map(mapper::entityToTransaccion)
                 .collect(Collectors.toList());
     }
 }

@@ -4,7 +4,11 @@ import com.finance.transaction.infraestructure.driver_adapters.jpa_repository.en
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
-public interface TransaccionJpaRepository extends JpaRepository<TransaccionEntity, String> {
-    List<TransaccionEntity> findByExternalUserId(String externalUserId);
+public interface TransaccionJpaRepository extends JpaRepository<TransaccionEntity, UUID> {
+    List<TransaccionEntity> findByUserId(UUID userId);
+    Optional<TransaccionEntity> findByIdAndUserId(UUID id, UUID userId);
+    void deleteByIdAndUserId(UUID id, UUID userId);
 }

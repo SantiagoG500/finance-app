@@ -11,7 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -30,14 +30,14 @@ public class AhorrosController {
     @PostMapping("/save")
     public ResponseEntity<MetaAhorroResponseDTO> guardarMetaAhorro(
             @Valid @RequestBody MetaAhorroRequestDTO request,
-            @AuthenticationPrincipal OAuth2User usuario
+            @AuthenticationPrincipal Jwt jwt
     ) {
-        String externalUserId = extractExternalUserId(usuario);
-        if (externalUserId == null) {
+        String userId = extractUserId(jwt);
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        MetaAhorro metaAhorro = metaAhorrosMapper.requestDtoToMetaAhorro(request, externalUserId);
+        MetaAhorro metaAhorro = metaAhorrosMapper.requestDtoToMetaAhorro(request, userId);
         MetaAhorro metaGuardada = metaAhorrosUseCase.guardarMetaAhorros(metaAhorro);
 
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -47,14 +47,14 @@ public class AhorrosController {
     @GetMapping("/get/{id}")
     public ResponseEntity<MetaAhorroResponseDTO> obtenerMetaAhorroPorId(
             @PathVariable("id") @NotBlank(message = "ID no debe estar vacío") String id,
-            @AuthenticationPrincipal OAuth2User usuario
+            @AuthenticationPrincipal Jwt jwt
     ) {
-        String externalUserId = extractExternalUserId(usuario);
-        if (externalUserId == null) {
+        String userId = extractUserId(jwt);
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        MetaAhorro metaAhorro = metaAhorrosUseCase.obtenerMetaAhorros(id, externalUserId);
+        MetaAhorro metaAhorro = metaAhorrosUseCase.obtenerMetaAhorros(id, userId);
         if (metaAhorro == null) {
             return ResponseEntity.notFound().build();
         }
@@ -64,14 +64,14 @@ public class AhorrosController {
 
     @GetMapping
     public ResponseEntity<List<MetaAhorroResponseDTO>> obtenerMetasPorUsuario(
-            @AuthenticationPrincipal OAuth2User usuario
+            @AuthenticationPrincipal Jwt jwt
     ) {
-        String externalUserId = extractExternalUserId(usuario);
-        if (externalUserId == null) {
+        String userId = extractUserId(jwt);
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        List<MetaAhorro> metas = metaAhorrosUseCase.obtenerMetasPorUsuario(externalUserId);
+        List<MetaAhorro> metas = metaAhorrosUseCase.obtenerMetasPorUsuario(userId);
         List<MetaAhorroResponseDTO> responseList = metas.stream()
                 .map(metaAhorrosMapper::metaAhorroToResponseDto)
                 .collect(Collectors.toList());
@@ -83,14 +83,14 @@ public class AhorrosController {
     public ResponseEntity<MetaAhorroResponseDTO> actualizarMetaAhorro(
             @PathVariable("id") @NotBlank(message = "ID no debe estar vacío") String id,
             @Valid @RequestBody MetaAhorroRequestDTO request,
-            @AuthenticationPrincipal OAuth2User usuario
+            @AuthenticationPrincipal Jwt jwt
     ) {
-        String externalUserId = extractExternalUserId(usuario);
-        if (externalUserId == null) {
+        String userId = extractUserId(jwt);
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        MetaAhorro metaAhorro = metaAhorrosMapper.requestDtoToMetaAhorro(id, request, externalUserId);
+        MetaAhorro metaAhorro = metaAhorrosMapper.requestDtoToMetaAhorro(id, request, userId);
         MetaAhorro metaActualizada = metaAhorrosUseCase.actualizarMetaAhorros(metaAhorro);
 
         return ResponseEntity.ok(metaAhorrosMapper.metaAhorroToResponseDto(metaActualizada));
@@ -99,26 +99,21 @@ public class AhorrosController {
     @DeleteMapping("/delete/{id}")
     public ResponseEntity<Void> eliminarMetaAhorro(
             @PathVariable("id") @NotBlank(message = "ID no debe estar vacío") String id,
-            @AuthenticationPrincipal OAuth2User usuario
+            @AuthenticationPrincipal Jwt jwt
     ) {
-        String externalUserId = extractExternalUserId(usuario);
-        if (externalUserId == null) {
+        String userId = extractUserId(jwt);
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        metaAhorrosUseCase.eliminarMetaAhorros(id, externalUserId);
+        metaAhorrosUseCase.eliminarMetaAhorros(id, userId);
         return ResponseEntity.noContent().build();
     }
 
-    private String extractExternalUserId(OAuth2User usuario) {
-        if (usuario == null) {
+    private String extractUserId(Jwt jwt) {
+        if (jwt == null || jwt.getSubject() == null || jwt.getSubject().trim().isEmpty()) {
             return null;
         }
-        String externalUserId = usuario.getAttribute("sub");
-        if (externalUserId == null || externalUserId.trim().isEmpty()) {
-            externalUserId = usuario.getName();
-        }
-        return (externalUserId != null && !externalUserId.trim().isEmpty()) ? externalUserId : null;
+        return jwt.getSubject();
     }
-
 }
