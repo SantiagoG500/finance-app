@@ -2,9 +2,11 @@ package com.finance.notification.infrastructure.adapters.mail;
 
 import com.finance.notification.domain.gateway.NotificationSenderGateway;
 import com.finance.notification.domain.model.Notification;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -23,14 +25,20 @@ public class GoogleMailSenderAdapter implements NotificationSenderGateway {
 
     @Override
     public void send(Notification notification) {
-        SimpleMailMessage mailMessage = new SimpleMailMessage();
-        if (senderEmail != null && !senderEmail.isBlank()) {
-            mailMessage.setFrom(senderEmail);
-        }
-        mailMessage.setTo(notification.recipient());
-        mailMessage.setSubject(notification.subject());
-        mailMessage.setText(notification.body());
+        try {
+            MimeMessage mimeMessage = javaMailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
 
-        javaMailSender.send(mailMessage);
+            if (senderEmail != null && !senderEmail.isBlank()) {
+                helper.setFrom(senderEmail);
+            }
+            helper.setTo(notification.recipient());
+            helper.setSubject(notification.subject());
+            helper.setText(notification.body(), true);
+
+            javaMailSender.send(mimeMessage);
+        } catch (MessagingException e) {
+            throw new IllegalStateException("Error al construir el correo HTML para: " + notification.recipient(), e);
+        }
     }
 }
