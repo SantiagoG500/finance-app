@@ -179,7 +179,8 @@ class UsuarioControllerTest {
         doNothing().when(usuarioUseCase).eliminarUsuarioPorId(userId);
 
         mockMvc.perform(delete("/api/usuarios/delete/{id}", userId))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Usuario eliminado exitosamente"));
     }
 
     @Test

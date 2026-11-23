@@ -6,19 +6,33 @@ import com.finance.transaction.domain.model.Transaccion;
 import com.finance.transaction.domain.model.enumns.FrecuenciaType;
 import com.finance.transaction.domain.model.enumns.TransaccionType;
 import com.finance.transaction.domain.model.gateway.MetaAhorrosGateway;
+import com.finance.transaction.domain.model.gateway.NotificationGateway;
 import com.finance.transaction.domain.model.gateway.TransaccionGateway;
-import lombok.AllArgsConstructor;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Collections;
 import java.util.List;
 
-@AllArgsConstructor
 public class ProyeccionesUseCase {
 
     private final TransaccionGateway tGateway;
     private final MetaAhorrosGateway mGateway;
+    private final NotificationGateway notificationGateway;
+
+    public ProyeccionesUseCase(TransaccionGateway tGateway, MetaAhorrosGateway mGateway) {
+        this(tGateway, mGateway, null);
+    }
+
+    public ProyeccionesUseCase(
+            TransaccionGateway tGateway,
+            MetaAhorrosGateway mGateway,
+            NotificationGateway notificationGateway
+    ) {
+        this.tGateway = tGateway;
+        this.mGateway = mGateway;
+        this.notificationGateway = notificationGateway;
+    }
 
     public static final BigDecimal DIAS_POR_MES = new BigDecimal("30.41");
     public static final BigDecimal SEMANAS_POR_MES = new BigDecimal("4.33");
@@ -118,11 +132,32 @@ public class ProyeccionesUseCase {
 
     // 3. Proyección a n Meses (Projections)
     public BigDecimal proyectarSaldo(String externalUserId, int meses) {
+        return proyectarSaldo(externalUserId, meses, null);
+    }
+
+    public BigDecimal proyectarSaldo(String externalUserId, int meses, String userEmail) {
         validarExternalUserId(externalUserId);
         List<Transaccion> transacciones = tGateway.obtenerTransaccionesPorUsuario(externalUserId);
         BigDecimal saldoInicial = calcularSaldoInicialAcumulado(transacciones);
         BigDecimal balanceNeto = calcularBalanceNeto(transacciones);
-        return proyectarSaldo(saldoInicial, balanceNeto, meses);
+        BigDecimal saldoProyectado = proyectarSaldo(saldoInicial, balanceNeto, meses);
+
+        if (notificationGateway != null
+                && userEmail != null
+                && !userEmail.isBlank()
+                && saldoProyectado != null
+                && saldoProyectado.compareTo(BigDecimal.ZERO) < 0) {
+            try {
+                notificationGateway.notifyProjectionDeficit(
+                        userEmail,
+                        String.valueOf(meses),
+                        saldoProyectado.toPlainString()
+                );
+            } catch (Exception ignored) {
+            }
+        }
+
+        return saldoProyectado;
     }
 
     public BigDecimal proyectarSaldo(BigDecimal saldoInicial, BigDecimal balanceNeto, int meses) {

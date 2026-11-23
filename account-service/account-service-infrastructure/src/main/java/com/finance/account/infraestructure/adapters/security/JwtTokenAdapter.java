@@ -40,7 +40,7 @@ public class JwtTokenAdapter implements TokenGateway {
                 .claim("fullName", fullName)
                 .issuedAt(now)
                 .expiration(expiryDate)
-                .signWith(signingKey)
+                .signWith(signingKey, Jwts.SIG.HS256)
                 .compact();
     }
 

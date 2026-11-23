@@ -2,8 +2,8 @@ package com.finance.transaction.domain.usecase;
 
 import com.finance.transaction.domain.model.Transaccion;
 import com.finance.transaction.domain.model.enumns.TransaccionType;
+import com.finance.transaction.domain.model.gateway.NotificationGateway;
 import com.finance.transaction.domain.model.gateway.TransaccionGateway;
-import lombok.RequiredArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -11,12 +11,25 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@RequiredArgsConstructor
 public class TransaccionUseCase {
 
     private final TransaccionGateway tGateway;
+    private final NotificationGateway notificationGateway;
+
+    public TransaccionUseCase(TransaccionGateway tGateway) {
+        this(tGateway, null);
+    }
+
+    public TransaccionUseCase(TransaccionGateway tGateway, NotificationGateway notificationGateway) {
+        this.tGateway = tGateway;
+        this.notificationGateway = notificationGateway;
+    }
 
     public Transaccion guardarTransaccion(Transaccion transaccion) {
+        return guardarTransaccion(transaccion, null);
+    }
+
+    public Transaccion guardarTransaccion(Transaccion transaccion, String userEmail) {
         if (transaccion == null) {
             throw new IllegalArgumentException("La transacción no puede ser nula.");
         }
@@ -24,7 +37,25 @@ public class TransaccionUseCase {
             transaccion.setCreatedAt(LocalDateTime.now());
         }
         validarTransaccionObj(transaccion);
-        return tGateway.guardarTransaccion(transaccion);
+        Transaccion guardada = tGateway.guardarTransaccion(transaccion);
+
+        if (notificationGateway != null && userEmail != null && !userEmail.isBlank() && guardada != null) {
+            try {
+                String formattedAmount = guardada.getAmount() + " " + guardada.getCurrency();
+                String description = (guardada.getDescription() != null && !guardada.getDescription().isBlank())
+                        ? guardada.getDescription()
+                        : "Sin descripción";
+                notificationGateway.notifyTransactionCreated(
+                        userEmail,
+                        guardada.getType().name(),
+                        formattedAmount,
+                        description
+                );
+            } catch (Exception ignored) {
+            }
+        }
+
+        return guardada;
     }
 
     public Transaccion obtenerTransaccion(String id, String externalUserId) {

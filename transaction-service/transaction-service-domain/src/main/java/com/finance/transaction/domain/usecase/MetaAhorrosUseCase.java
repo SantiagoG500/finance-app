@@ -2,7 +2,7 @@ package com.finance.transaction.domain.usecase;
 
 import com.finance.transaction.domain.model.MetaAhorro;
 import com.finance.transaction.domain.model.gateway.MetaAhorrosGateway;
-import lombok.RequiredArgsConstructor;
+import com.finance.transaction.domain.model.gateway.NotificationGateway;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -10,10 +10,19 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 
-@RequiredArgsConstructor
 public class MetaAhorrosUseCase {
 
     private final MetaAhorrosGateway mGateway;
+    private final NotificationGateway notificationGateway;
+
+    public MetaAhorrosUseCase(MetaAhorrosGateway mGateway) {
+        this(mGateway, null);
+    }
+
+    public MetaAhorrosUseCase(MetaAhorrosGateway mGateway, NotificationGateway notificationGateway) {
+        this.mGateway = mGateway;
+        this.notificationGateway = notificationGateway;
+    }
 
     public MetaAhorro guardarMetaAhorros(MetaAhorro metaAhorro) {
         if (metaAhorro == null) {
@@ -53,6 +62,10 @@ public class MetaAhorrosUseCase {
     }
 
     public MetaAhorro abonarMetaAhorros(String id, String externalId, BigDecimal montoAbono) {
+        return abonarMetaAhorros(id, externalId, montoAbono, null);
+    }
+
+    public MetaAhorro abonarMetaAhorros(String id, String externalId, BigDecimal montoAbono, String userEmail) {
         validarParametros(id, externalId);
         if (montoAbono == null || montoAbono.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("El monto del abono debe ser mayor a cero");
@@ -66,7 +79,29 @@ public class MetaAhorrosUseCase {
         BigDecimal montoActual = meta.getCurrentAmount() != null ? meta.getCurrentAmount() : BigDecimal.ZERO;
         meta.setCurrentAmount(montoActual.add(montoAbono));
 
-        return mGateway.actualizarMetaAhorros(meta);
+        MetaAhorro actualizada = mGateway.actualizarMetaAhorros(meta);
+
+        if (notificationGateway != null
+                && userEmail != null
+                && !userEmail.isBlank()
+                && actualizada != null
+                && actualizada.getCurrentAmount() != null
+                && actualizada.getTargetAmount() != null
+                && actualizada.getCurrentAmount().compareTo(actualizada.getTargetAmount()) >= 0) {
+            try {
+                String progressSummary = actualizada.getCurrentAmount() + " / " + actualizada.getTargetAmount() + " " + actualizada.getCurrency();
+                String percentage = actualizada.calcularPorcentajeCompletado() + "%";
+                notificationGateway.notifySavingsGoalAchieved(
+                        userEmail,
+                        actualizada.getTitle(),
+                        progressSummary,
+                        percentage
+                );
+            } catch (Exception ignored) {
+            }
+        }
+
+        return actualizada;
     }
 
     // Validates the ID parameters used for fetching or deleting

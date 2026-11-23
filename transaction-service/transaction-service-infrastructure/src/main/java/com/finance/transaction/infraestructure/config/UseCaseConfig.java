@@ -1,6 +1,7 @@
 package com.finance.transaction.infraestructure.config;
 
 import com.finance.transaction.domain.model.gateway.MetaAhorrosGateway;
+import com.finance.transaction.domain.model.gateway.NotificationGateway;
 import com.finance.transaction.domain.model.gateway.TransaccionGateway;
 import com.finance.transaction.domain.usecase.MetaAhorrosUseCase;
 import com.finance.transaction.domain.usecase.ProyeccionesUseCase;
@@ -12,17 +13,27 @@ import org.springframework.context.annotation.Configuration;
 public class UseCaseConfig {
 
     @Bean
-    public ProyeccionesUseCase proyeccionesUseCase(TransaccionGateway tGateway, MetaAhorrosGateway mGateway) {
-        return new ProyeccionesUseCase(tGateway, mGateway);
+    public ProyeccionesUseCase proyeccionesUseCase(
+            TransaccionGateway tGateway,
+            MetaAhorrosGateway mGateway,
+            NotificationGateway notificationGateway
+    ) {
+        return new ProyeccionesUseCase(tGateway, mGateway, notificationGateway);
     }
 
     @Bean
-    public TransaccionUseCase transaccionUseCase(TransaccionGateway tGateway) {
-        return new TransaccionUseCase(tGateway);
+    public TransaccionUseCase transaccionUseCase(
+            TransaccionGateway tGateway,
+            NotificationGateway notificationGateway
+    ) {
+        return new TransaccionUseCase(tGateway, notificationGateway);
     }
 
     @Bean
-    public MetaAhorrosUseCase metaAhorrosUseCase(MetaAhorrosGateway mGateway) {
-        return new MetaAhorrosUseCase(mGateway);
+    public MetaAhorrosUseCase metaAhorrosUseCase(
+            MetaAhorrosGateway mGateway,
+            NotificationGateway notificationGateway
+    ) {
+        return new MetaAhorrosUseCase(mGateway, notificationGateway);
     }
 }

@@ -13,8 +13,11 @@ import org.springframework.context.annotation.Configuration;
 public class UseCaseConfig {
 
     @Bean
-    public UsuarioUseCase usuarioUseCase(UsuarioGateWay usuarioGateWay) {
-        return new UsuarioUseCase(usuarioGateWay);
+    public UsuarioUseCase usuarioUseCase(
+            UsuarioGateWay usuarioGateWay,
+            NotificationGateway notificationGateway
+    ) {
+        return new UsuarioUseCase(usuarioGateWay, notificationGateway);
     }
 
     @Bean

@@ -3,13 +3,16 @@ package com.finance.account.infraestructure.entry_points;
 import com.finance.account.domain.model.AuthResult;
 import com.finance.account.domain.usecase.AuthUseCase;
 import com.finance.account.infraestructure.entry_points.dto.AuthResponseDTO;
+import com.finance.account.infraestructure.entry_points.dto.ChangePasswordRequestDTO;
 import com.finance.account.infraestructure.entry_points.dto.LoginRequestDTO;
+import com.finance.account.infraestructure.entry_points.dto.MessageResponseDTO;
 import com.finance.account.infraestructure.entry_points.dto.RegisterRequestDTO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -56,5 +59,16 @@ public class AuthController {
                 .build();
 
         return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/password")
+    public ResponseEntity<MessageResponseDTO> changePassword(@Valid @RequestBody ChangePasswordRequestDTO request) {
+        authUseCase.changePassword(
+                request.getEmail(),
+                request.getCurrentPassword(),
+                request.getNewPassword()
+        );
+
+        return ResponseEntity.ok(new MessageResponseDTO("Contraseña actualizada correctamente"));
     }
 }

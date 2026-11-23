@@ -20,7 +20,11 @@ spring:
     open-in-view: ${JPA_OPEN_IN_VIEW:false}
 
 jwt:
-  secret: ${JWT_SECRET:mi_clave_super_secreta_de_al_menos_32_caracteres_12345}
+  secret: ${JWT_SECRET}
+
+services:
+  notification:
+    url: ${NOTIFICATION_SERVICE_URL:http://localhost:8082}
 
 server:
   port: ${SERVER_PORT:8081}

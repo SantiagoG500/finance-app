@@ -7,7 +7,6 @@ import com.finance.transaction.infraestructure.entry_points.dto.ProyeccionSaldoR
 import com.finance.transaction.infraestructure.entry_points.dto.ResumenFinancieroDTO;
 import com.finance.transaction.infraestructure.mapper.ResumenFinancieroMapper;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -31,10 +30,6 @@ public class ProyeccionesController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
         ResumenFinanciero resumen = proyeccionesUseCase.obtenerResumenFinanciero(userId);
         ResumenFinancieroDTO dto = resumenFinancieroMapper.resumenFinancieroToDto(resumen);
 
@@ -47,15 +42,12 @@ public class ProyeccionesController {
             @RequestParam(name = "months", defaultValue = "6") int months
     ) {
         String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
         if (months < 1 || months > 120) {
             throw new IllegalArgumentException("El horizonte de meses debe estar entre 1 y 120");
         }
 
-        BigDecimal saldoProyectado = proyeccionesUseCase.proyectarSaldo(userId, months);
+        String userEmail = extractUserEmail(jwt);
+        BigDecimal saldoProyectado = proyeccionesUseCase.proyectarSaldo(userId, months, userEmail);
         ProyeccionSaldoResponseDTO response = ProyeccionSaldoResponseDTO.builder()
                 .usuarioId(userId)
                 .mesesProyectados(months)
@@ -70,10 +62,6 @@ public class ProyeccionesController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
         BigDecimal balanceNeto = proyeccionesUseCase.calcularBalanceNeto(userId);
         BalanceNetoResponseDTO response = BalanceNetoResponseDTO.builder()
                 .usuarioId(userId)
@@ -85,8 +73,15 @@ public class ProyeccionesController {
 
     private String extractUserId(Jwt jwt) {
         if (jwt == null || jwt.getSubject() == null || jwt.getSubject().trim().isEmpty()) {
-            return null;
+            throw new IllegalArgumentException("El token JWT no contiene un identificador de usuario válido");
         }
         return jwt.getSubject();
+    }
+
+    private String extractUserEmail(Jwt jwt) {
+        if (jwt == null) {
+            return null;
+        }
+        return jwt.getClaimAsString("email");
     }
 }

@@ -3,6 +3,7 @@ package com.finance.transaction.infraestructure.entry_points;
 import com.finance.transaction.domain.model.Transaccion;
 import com.finance.transaction.domain.model.enumns.TransaccionType;
 import com.finance.transaction.domain.usecase.TransaccionUseCase;
+import com.finance.transaction.infraestructure.entry_points.dto.MessageResponseDTO;
 import com.finance.transaction.infraestructure.entry_points.dto.TransaccionRequestDTO;
 import com.finance.transaction.infraestructure.entry_points.dto.TransaccionResponseDTO;
 import com.finance.transaction.infraestructure.mapper.TransaccionMapper;
@@ -17,6 +18,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 
 @RestController
@@ -34,12 +36,9 @@ public class TransaccionController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
+        String userEmail = extractUserEmail(jwt);
         Transaccion transaccion = transaccionMapper.requestDtoToTransaccion(request, userId);
-        Transaccion transaccionCreada = transaccionUseCase.guardarTransaccion(transaccion);
+        Transaccion transaccionCreada = transaccionUseCase.guardarTransaccion(transaccion, userEmail);
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(transaccionMapper.transaccionToResponseDto(transaccionCreada));
@@ -51,13 +50,9 @@ public class TransaccionController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
         Transaccion transaccion = transaccionUseCase.obtenerTransaccion(id, userId);
         if (transaccion == null) {
-            return ResponseEntity.notFound().build();
+            throw new NoSuchElementException("Transacción no encontrada");
         }
 
         return ResponseEntity.ok(transaccionMapper.transaccionToResponseDto(transaccion));
@@ -69,10 +64,6 @@ public class TransaccionController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
         Transaccion transaccion = transaccionMapper.requestDtoToTransaccion(request, userId);
         Transaccion transaccionActualizada = transaccionUseCase.actualizarTransaccion(transaccion);
 
@@ -80,17 +71,13 @@ public class TransaccionController {
     }
 
     @DeleteMapping("/delete/{id}")
-    public ResponseEntity<Void> deleteTransaccion(
+    public ResponseEntity<MessageResponseDTO> deleteTransaccion(
             @PathVariable("id") @NotBlank(message = "ID no debe estar vacío") String id,
             @AuthenticationPrincipal Jwt jwt
     ) {
         String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
         transaccionUseCase.eliminarTransaccion(id, userId);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(new MessageResponseDTO("Transacción eliminada exitosamente"));
     }
 
     @GetMapping("/transactions/by-type")
@@ -99,10 +86,6 @@ public class TransaccionController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
         List<Transaccion> transacciones = transaccionUseCase.obtenerTransaccionesPorTipo(userId, type);
         List<TransaccionResponseDTO> responseList = transacciones.stream()
                 .map(transaccionMapper::transaccionToResponseDto)
@@ -113,8 +96,15 @@ public class TransaccionController {
 
     private String extractUserId(Jwt jwt) {
         if (jwt == null || jwt.getSubject() == null || jwt.getSubject().trim().isEmpty()) {
-            return null;
+            throw new IllegalArgumentException("El token JWT no contiene un identificador de usuario válido");
         }
         return jwt.getSubject();
+    }
+
+    private String extractUserEmail(Jwt jwt) {
+        if (jwt == null) {
+            return null;
+        }
+        return jwt.getClaimAsString("email");
     }
 }

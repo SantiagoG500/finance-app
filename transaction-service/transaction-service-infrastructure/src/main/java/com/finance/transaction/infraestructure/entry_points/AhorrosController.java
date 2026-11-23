@@ -3,6 +3,7 @@ package com.finance.transaction.infraestructure.entry_points;
 import com.finance.transaction.domain.model.MetaAhorro;
 import com.finance.transaction.domain.usecase.MetaAhorrosUseCase;
 import com.finance.transaction.infraestructure.entry_points.dto.AbonoMetaRequestDTO;
+import com.finance.transaction.infraestructure.entry_points.dto.MessageResponseDTO;
 import com.finance.transaction.infraestructure.entry_points.dto.MetaAhorroRequestDTO;
 import com.finance.transaction.infraestructure.entry_points.dto.MetaAhorroResponseDTO;
 import com.finance.transaction.infraestructure.mapper.MetaAhorrosMapper;
@@ -17,6 +18,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 
 @RestController
@@ -34,10 +36,6 @@ public class AhorrosController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
         MetaAhorro metaAhorro = metaAhorrosMapper.requestDtoToMetaAhorro(request, userId);
         MetaAhorro metaGuardada = metaAhorrosUseCase.guardarMetaAhorros(metaAhorro);
 
@@ -51,13 +49,9 @@ public class AhorrosController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
         MetaAhorro metaAhorro = metaAhorrosUseCase.obtenerMetaAhorros(id, userId);
         if (metaAhorro == null) {
-            return ResponseEntity.notFound().build();
+            throw new NoSuchElementException("Meta de ahorro no encontrada");
         }
 
         return ResponseEntity.ok(metaAhorrosMapper.metaAhorroToResponseDto(metaAhorro));
@@ -68,10 +62,6 @@ public class AhorrosController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
         List<MetaAhorro> metas = metaAhorrosUseCase.obtenerMetasPorUsuario(userId);
         List<MetaAhorroResponseDTO> responseList = metas.stream()
                 .map(metaAhorrosMapper::metaAhorroToResponseDto)
@@ -87,10 +77,6 @@ public class AhorrosController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
         MetaAhorro metaAhorro = metaAhorrosMapper.requestDtoToMetaAhorro(id, request, userId);
         MetaAhorro metaActualizada = metaAhorrosUseCase.actualizarMetaAhorros(metaAhorro);
 
@@ -98,17 +84,13 @@ public class AhorrosController {
     }
 
     @DeleteMapping("/delete/{id}")
-    public ResponseEntity<Void> eliminarMetaAhorro(
+    public ResponseEntity<MessageResponseDTO> eliminarMetaAhorro(
             @PathVariable("id") @NotBlank(message = "ID no debe estar vacío") String id,
             @AuthenticationPrincipal Jwt jwt
     ) {
         String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
         metaAhorrosUseCase.eliminarMetaAhorros(id, userId);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(new MessageResponseDTO("Meta de ahorro eliminada exitosamente"));
     }
 
     @PutMapping("/{id}/deposit")
@@ -118,18 +100,22 @@ public class AhorrosController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        MetaAhorro metaActualizada = metaAhorrosUseCase.abonarMetaAhorros(id, userId, request.getAmount());
+        String userEmail = extractUserEmail(jwt);
+        MetaAhorro metaActualizada = metaAhorrosUseCase.abonarMetaAhorros(id, userId, request.getAmount(), userEmail);
         return ResponseEntity.ok(metaAhorrosMapper.metaAhorroToResponseDto(metaActualizada));
     }
 
     private String extractUserId(Jwt jwt) {
         if (jwt == null || jwt.getSubject() == null || jwt.getSubject().trim().isEmpty()) {
-            return null;
+            throw new IllegalArgumentException("El token JWT no contiene un identificador de usuario válido");
         }
         return jwt.getSubject();
+    }
+
+    private String extractUserEmail(Jwt jwt) {
+        if (jwt == null) {
+            return null;
+        }
+        return jwt.getClaimAsString("email");
     }
 }
