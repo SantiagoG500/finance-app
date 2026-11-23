@@ -6,6 +6,9 @@ import com.finance.account.domain.model.Usuario;
 import com.finance.account.domain.usecase.UsuarioUseCase;
 import com.finance.account.infraestructure.config.JwtAuthenticationFilter;
 import com.finance.account.infraestructure.config.SecurityConfig;
+import com.finance.account.infraestructure.entry_points.dto.UpdateAccountStatusRequestDTO;
+import com.finance.account.infraestructure.entry_points.dto.UpdateBaseCurrencyRequestDTO;
+import com.finance.account.infraestructure.entry_points.exception.GlobalExceptionHandler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +19,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.NoSuchElementException;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -27,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = UsuarioController.class)
-@Import({SecurityConfig.class, JwtAuthenticationFilter.class})
+@Import({SecurityConfig.class, JwtAuthenticationFilter.class, GlobalExceptionHandler.class})
 class UsuarioControllerTest {
 
     @Autowired
@@ -45,8 +49,11 @@ class UsuarioControllerTest {
     @Test
     @DisplayName("Should return 401 Unauthorized when requesting without authentication token")
     void shouldDenyAccessWhenUnauthenticated() throws Exception {
+        // Arrange
         UUID userId = UUID.randomUUID();
 
+        // Act
+        // Assert
         mockMvc.perform(get("/api/usuarios/get/{id}", userId))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.status").value(401))
@@ -57,6 +64,7 @@ class UsuarioControllerTest {
     @DisplayName("Should return 200 OK when fetching user by ID with authentication")
     @WithMockUser
     void shouldGetUserByIdWhenAuthenticated() throws Exception {
+        // Arrange
         UUID userId = UUID.randomUUID();
         Usuario mockUser = new Usuario(
                 userId,
@@ -70,6 +78,8 @@ class UsuarioControllerTest {
 
         when(usuarioUseCase.obtenerUsuarioPorId(eq(userId))).thenReturn(mockUser);
 
+        // Act
+        // Assert
         mockMvc.perform(get("/api/usuarios/get/{id}", userId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(userId.toString()))
@@ -81,6 +91,7 @@ class UsuarioControllerTest {
     @DisplayName("Should return 200 OK when fetching user by ID using standard REST alias /{id}")
     @WithMockUser
     void shouldGetUserByIdUsingRestAlias() throws Exception {
+        // Arrange
         UUID userId = UUID.randomUUID();
         Usuario mockUser = new Usuario(
                 userId,
@@ -94,6 +105,8 @@ class UsuarioControllerTest {
 
         when(usuarioUseCase.obtenerUsuarioPorId(eq(userId))).thenReturn(mockUser);
 
+        // Act
+        // Assert
         mockMvc.perform(get("/api/usuarios/{id}", userId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(userId.toString()))
@@ -104,6 +117,7 @@ class UsuarioControllerTest {
     @DisplayName("Should return 200 OK when fetching user by Email with authentication")
     @WithMockUser
     void shouldGetUserByEmailWhenAuthenticated() throws Exception {
+        // Arrange
         UUID userId = UUID.randomUUID();
         String email = "juan@example.com";
         Usuario mockUser = new Usuario(
@@ -118,6 +132,8 @@ class UsuarioControllerTest {
 
         when(usuarioUseCase.obtenerUsuarioPorEmail(email)).thenReturn(mockUser);
 
+        // Act
+        // Assert
         mockMvc.perform(get("/api/usuarios/email/{email}", email))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value(email))
@@ -128,6 +144,7 @@ class UsuarioControllerTest {
     @DisplayName("Should return 201 Created when saving user")
     @WithMockUser
     void shouldSaveUserWhenAuthenticated() throws Exception {
+        // Arrange
         UUID userId = UUID.randomUUID();
         Usuario inputUser = new Usuario();
         inputUser.setEmail("new@example.com");
@@ -145,6 +162,8 @@ class UsuarioControllerTest {
 
         when(usuarioUseCase.guardarUsuario(any(Usuario.class))).thenReturn(savedUser);
 
+        // Act
+        // Assert
         mockMvc.perform(post("/api/usuarios/save")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(inputUser)))
@@ -157,6 +176,7 @@ class UsuarioControllerTest {
     @DisplayName("Should return 200 OK when updating user")
     @WithMockUser
     void shouldUpdateUserWhenAuthenticated() throws Exception {
+        // Arrange
         UUID userId = UUID.randomUUID();
         Usuario updateUser = new Usuario();
         updateUser.setId(userId);
@@ -164,6 +184,8 @@ class UsuarioControllerTest {
 
         when(usuarioUseCase.actualizarUsuario(any(Usuario.class))).thenReturn(updateUser);
 
+        // Act
+        // Assert
         mockMvc.perform(put("/api/usuarios/update")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updateUser)))
@@ -175,9 +197,12 @@ class UsuarioControllerTest {
     @DisplayName("Should return 200 OK when deleting user")
     @WithMockUser
     void shouldDeleteUserWhenAuthenticated() throws Exception {
+        // Arrange
         UUID userId = UUID.randomUUID();
         doNothing().when(usuarioUseCase).eliminarUsuarioPorId(userId);
 
+        // Act
+        // Assert
         mockMvc.perform(delete("/api/usuarios/delete/{id}", userId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("Usuario eliminado exitosamente"));
@@ -186,6 +211,7 @@ class UsuarioControllerTest {
     @Test
     @DisplayName("Should authenticate using Bearer token via JwtAuthenticationFilter")
     void shouldAuthenticateWithBearerToken() throws Exception {
+        // Arrange
         UUID userId = UUID.randomUUID();
         String validToken = "valid.jwt.token";
 
@@ -203,6 +229,8 @@ class UsuarioControllerTest {
         );
         when(usuarioUseCase.obtenerUsuarioPorId(eq(userId))).thenReturn(mockUser);
 
+        // Act
+        // Assert
         mockMvc.perform(get("/api/usuarios/get/{id}", userId)
                         .header("Authorization", "Bearer " + validToken))
                 .andExpect(status().isOk())
@@ -212,6 +240,7 @@ class UsuarioControllerTest {
     @Test
     @DisplayName("Should authenticate even if token is sent without Bearer prefix")
     void shouldAuthenticateWithRawToken() throws Exception {
+        // Arrange
         UUID userId = UUID.randomUUID();
         String validToken = "valid.raw.token";
 
@@ -229,9 +258,174 @@ class UsuarioControllerTest {
         );
         when(usuarioUseCase.obtenerUsuarioPorId(eq(userId))).thenReturn(mockUser);
 
+        // Act
+        // Assert
         mockMvc.perform(get("/api/usuarios/get/{id}", userId)
                         .header("Authorization", validToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("raw@example.com"));
+    }
+
+    @Test
+    @DisplayName("Should return 200 OK when changing account status")
+    @WithMockUser
+    void shouldChangeAccountStatusWhenRequestIsValid() throws Exception {
+        // Arrange
+        UUID userId = UUID.randomUUID();
+        UpdateAccountStatusRequestDTO request = new UpdateAccountStatusRequestDTO(false);
+        Usuario updatedUser = new Usuario(userId, "status@example.com", "hash", "Status User", null, "USD", false);
+
+        when(usuarioUseCase.cambiarEstadoCuenta(userId, false)).thenReturn(updatedUser);
+
+        // Act
+        // Assert
+        mockMvc.perform(put("/api/usuarios/{id}/status", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isActive").value(false));
+    }
+
+    @Test
+    @DisplayName("Should return 400 Bad Request when changing account status with null active")
+    @WithMockUser
+    void shouldReturn400WhenChangeAccountStatusRequestIsInvalid() throws Exception {
+        // Arrange
+        UUID userId = UUID.randomUUID();
+        UpdateAccountStatusRequestDTO invalidRequest = new UpdateAccountStatusRequestDTO(null);
+
+        // Act
+        // Assert
+        mockMvc.perform(put("/api/usuarios/{id}/status", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invalidRequest)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    @DisplayName("Should return 409 Conflict when changing account status to redundant state")
+    @WithMockUser
+    void shouldReturn409WhenChangeAccountStatusIsRedundant() throws Exception {
+        // Arrange
+        UUID userId = UUID.randomUUID();
+        UpdateAccountStatusRequestDTO request = new UpdateAccountStatusRequestDTO(true);
+        when(usuarioUseCase.cambiarEstadoCuenta(userId, true))
+                .thenThrow(new IllegalStateException("La cuenta ya se encuentra en el estado solicitado"));
+
+        // Act
+        // Assert
+        mockMvc.perform(put("/api/usuarios/{id}/status", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.message").value("La cuenta ya se encuentra en el estado solicitado"));
+    }
+
+    @Test
+    @DisplayName("Should return 200 OK when updating base currency")
+    @WithMockUser
+    void shouldUpdateBaseCurrencyWhenRequestIsValid() throws Exception {
+        // Arrange
+        UUID userId = UUID.randomUUID();
+        UpdateBaseCurrencyRequestDTO request = new UpdateBaseCurrencyRequestDTO("COP");
+        Usuario updatedUser = new Usuario(userId, "currency@example.com", "hash", "Currency User", null, "COP", true);
+
+        when(usuarioUseCase.actualizarMonedaBase(userId, "COP")).thenReturn(updatedUser);
+
+        // Act
+        // Assert
+        mockMvc.perform(put("/api/usuarios/{id}/currency", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.baseCurrency").value("COP"));
+    }
+
+    @Test
+    @DisplayName("Should return 400 Bad Request when updating base currency with unsupported currency")
+    @WithMockUser
+    void shouldReturn400WhenUpdateBaseCurrencyIsUnsupported() throws Exception {
+        // Arrange
+        UUID userId = UUID.randomUUID();
+        UpdateBaseCurrencyRequestDTO request = new UpdateBaseCurrencyRequestDTO("GBP");
+        when(usuarioUseCase.actualizarMonedaBase(userId, "GBP"))
+                .thenThrow(new IllegalArgumentException("Moneda base no soportada"));
+
+        // Act
+        // Assert
+        mockMvc.perform(put("/api/usuarios/{id}/currency", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Moneda base no soportada"));
+    }
+
+    @Test
+    @DisplayName("Should return 404 Not Found when user is not found")
+    @WithMockUser
+    void shouldReturn404WhenUserNotFound() throws Exception {
+        // Arrange
+        UUID userId = UUID.randomUUID();
+        when(usuarioUseCase.obtenerUsuarioPorId(userId))
+                .thenThrow(new NoSuchElementException("Usuario no puede ser null"));
+
+        // Act
+        // Assert
+        mockMvc.perform(get("/api/usuarios/{id}", userId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.message").value("Usuario no puede ser null"));
+    }
+
+    @Test
+    @DisplayName("Should return 400 Bad Request when path variable UUID is malformed")
+    @WithMockUser
+    void shouldReturn400WhenPathVariableTypeMismatchOccurs() throws Exception {
+        // Arrange
+        String invalidUuid = "not-a-valid-uuid";
+
+        // Act
+        // Assert
+        mockMvc.perform(get("/api/usuarios/{id}", invalidUuid))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    @DisplayName("Should return 400 Bad Request when JSON request body is malformed")
+    @WithMockUser
+    void shouldReturn400WhenJsonBodyIsMalformed() throws Exception {
+        // Arrange
+        UUID userId = UUID.randomUUID();
+        String malformedJson = "{ \"active\": ";
+
+        // Act
+        // Assert
+        mockMvc.perform(put("/api/usuarios/{id}/status", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(malformedJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("El cuerpo de la solicitud JSON está malformado o es inválido"));
+    }
+
+    @Test
+    @DisplayName("Should return 500 Internal Server Error when unexpected exception occurs")
+    @WithMockUser
+    void shouldReturn500WhenUnexpectedExceptionOccurs() throws Exception {
+        // Arrange
+        UUID userId = UUID.randomUUID();
+        when(usuarioUseCase.obtenerUsuarioPorId(userId))
+                .thenThrow(new RuntimeException("Unexpected database failure"));
+
+        // Act
+        // Assert
+        mockMvc.perform(get("/api/usuarios/{id}", userId))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500))
+                .andExpect(jsonPath("$.message").value("Ha ocurrido un error interno inesperado en el servidor"));
     }
 }
