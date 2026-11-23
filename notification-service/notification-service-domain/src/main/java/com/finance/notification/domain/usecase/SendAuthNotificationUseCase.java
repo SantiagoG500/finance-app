@@ -1,4 +1,4 @@
-package com.finance.notification.usecases;
+package com.finance.notification.domain.usecase;
 
 import com.finance.notification.domain.gateway.NotificationSenderGateway;
 import com.finance.notification.domain.model.Notification;

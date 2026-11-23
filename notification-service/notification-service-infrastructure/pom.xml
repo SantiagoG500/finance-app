@@ -13,10 +13,10 @@
     <artifactId>notification-service-infrastructure</artifactId>
 
     <dependencies>
-        <!-- Dependency on Use Cases -->
+        <!-- Dependency on Domain -->
         <dependency>
             <groupId>com.finance</groupId>
-            <artifactId>notification-service-usecases</artifactId>
+            <artifactId>notification-service-domain</artifactId>
             <version>${project.version}</version>
         </dependency>
 

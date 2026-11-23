@@ -13,10 +13,10 @@
     <artifactId>transaction-service-infrastructure</artifactId>
 
     <dependencies>
-        <!-- Dependency on Use Cases -->
+        <!-- Dependency on Domain -->
         <dependency>
             <groupId>com.finance</groupId>
-            <artifactId>transaction-service-usecases</artifactId>
+            <artifactId>transaction-service-domain</artifactId>
             <version>${project.version}</version>
         </dependency>
 

@@ -1,7 +1,7 @@
 package com.finance.notification.infrastructure.entrypoints.rest;
 
 import com.finance.notification.infrastructure.entrypoints.rest.dto.AuthNotificationRequest;
-import com.finance.notification.usecases.SendAuthNotificationUseCase;
+import com.finance.notification.domain.usecase.SendAuthNotificationUseCase;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;

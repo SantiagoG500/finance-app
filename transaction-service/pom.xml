@@ -16,6 +16,5 @@
         <module>transaction-service-boot</module>
         <module>transaction-service-domain</module>
         <module>transaction-service-infrastructure</module>
-        <module>transaction-service-usecases</module>
     </modules>
 </project>

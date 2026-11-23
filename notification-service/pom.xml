@@ -15,7 +15,6 @@
 
     <modules>
         <module>notification-service-domain</module>
-        <module>notification-service-usecases</module>
         <module>notification-service-infrastructure</module>
         <module>notification-service-boot</module>
     </modules>
