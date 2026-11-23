@@ -1,11 +1,15 @@
 package com.finance.transaction.domain.usecase;
 
 import com.finance.transaction.domain.model.Transaccion;
+import com.finance.transaction.domain.model.enumns.TransaccionType;
 import com.finance.transaction.domain.model.gateway.TransaccionGateway;
 import lombok.RequiredArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
 public class TransaccionUseCase {
@@ -37,6 +41,24 @@ public class TransaccionUseCase {
     public void eliminarTransaccion(String id, String externalUserId) {
         validarParametros(id, externalUserId);
         tGateway.eliminarTransaccion(id, externalUserId);
+    }
+
+    public List<Transaccion> obtenerTransaccionesPorTipo(String externalUserId, TransaccionType type) {
+        if (externalUserId == null || externalUserId.trim().isEmpty()) {
+            throw new IllegalArgumentException("El ID externo del usuario no puede ser nulo o vacío.");
+        }
+        if (type == null) {
+            throw new IllegalArgumentException("El tipo de transacción no puede ser nulo.");
+        }
+
+        List<Transaccion> transacciones = tGateway.obtenerTransaccionesPorUsuario(externalUserId);
+        if (transacciones == null || transacciones.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return transacciones.stream()
+                .filter(t -> t != null && t.getType() == type)
+                .collect(Collectors.toList());
     }
 
     public void validarParametros(String id, String externalUserId) {

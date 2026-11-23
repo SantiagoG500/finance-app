@@ -1,6 +1,7 @@
 package com.finance.transaction.infraestructure.entry_points;
 
 import com.finance.transaction.domain.model.Transaccion;
+import com.finance.transaction.domain.model.enumns.TransaccionType;
 import com.finance.transaction.domain.usecase.TransaccionUseCase;
 import com.finance.transaction.infraestructure.entry_points.dto.TransaccionRequestDTO;
 import com.finance.transaction.infraestructure.entry_points.dto.TransaccionResponseDTO;
@@ -14,6 +15,9 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/finances")
@@ -87,6 +91,24 @@ public class TransaccionController {
 
         transaccionUseCase.eliminarTransaccion(id, userId);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/transactions/by-type")
+    public ResponseEntity<List<TransaccionResponseDTO>> obtenerTransaccionesPorTipo(
+            @RequestParam("type") TransaccionType type,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        String userId = extractUserId(jwt);
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        List<Transaccion> transacciones = transaccionUseCase.obtenerTransaccionesPorTipo(userId, type);
+        List<TransaccionResponseDTO> responseList = transacciones.stream()
+                .map(transaccionMapper::transaccionToResponseDto)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responseList);
     }
 
     private String extractUserId(Jwt jwt) {

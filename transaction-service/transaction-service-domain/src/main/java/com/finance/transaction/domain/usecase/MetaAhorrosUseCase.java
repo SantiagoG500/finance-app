@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.UUID;
 
 @RequiredArgsConstructor
@@ -49,6 +50,23 @@ public class MetaAhorrosUseCase {
     public void eliminarMetaAhorros(String id, String externalId) {
         validarParametros(id, externalId);
         mGateway.eliminarMetaAhorros(id, externalId);
+    }
+
+    public MetaAhorro abonarMetaAhorros(String id, String externalId, BigDecimal montoAbono) {
+        validarParametros(id, externalId);
+        if (montoAbono == null || montoAbono.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("El monto del abono debe ser mayor a cero");
+        }
+
+        MetaAhorro meta = mGateway.obtenerMetaAhorros(id, externalId);
+        if (meta == null) {
+            throw new NoSuchElementException("Meta de ahorro no encontrada");
+        }
+
+        BigDecimal montoActual = meta.getCurrentAmount() != null ? meta.getCurrentAmount() : BigDecimal.ZERO;
+        meta.setCurrentAmount(montoActual.add(montoAbono));
+
+        return mGateway.actualizarMetaAhorros(meta);
     }
 
     // Validates the ID parameters used for fetching or deleting

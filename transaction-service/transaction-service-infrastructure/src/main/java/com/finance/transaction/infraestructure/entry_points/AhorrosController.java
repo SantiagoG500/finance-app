@@ -2,6 +2,7 @@ package com.finance.transaction.infraestructure.entry_points;
 
 import com.finance.transaction.domain.model.MetaAhorro;
 import com.finance.transaction.domain.usecase.MetaAhorrosUseCase;
+import com.finance.transaction.infraestructure.entry_points.dto.AbonoMetaRequestDTO;
 import com.finance.transaction.infraestructure.entry_points.dto.MetaAhorroRequestDTO;
 import com.finance.transaction.infraestructure.entry_points.dto.MetaAhorroResponseDTO;
 import com.finance.transaction.infraestructure.mapper.MetaAhorrosMapper;
@@ -108,6 +109,21 @@ public class AhorrosController {
 
         metaAhorrosUseCase.eliminarMetaAhorros(id, userId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/deposit")
+    public ResponseEntity<MetaAhorroResponseDTO> abonarMetaAhorro(
+            @PathVariable("id") @NotBlank(message = "ID no debe estar vacío") String id,
+            @Valid @RequestBody AbonoMetaRequestDTO request,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        String userId = extractUserId(jwt);
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        MetaAhorro metaActualizada = metaAhorrosUseCase.abonarMetaAhorros(id, userId, request.getAmount());
+        return ResponseEntity.ok(metaAhorrosMapper.metaAhorroToResponseDto(metaActualizada));
     }
 
     private String extractUserId(Jwt jwt) {
