@@ -1,6 +1,7 @@
 package com.finance.transaction.infraestructure.entry_points.exception;
 
 import com.finance.transaction.infraestructure.entry_points.dto.ErrorResponseDTO;
+import feign.FeignException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -106,6 +107,30 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(FeignException.NotFound.class)
+    public ResponseEntity<ErrorResponseDTO> handleFeignNotFoundException(
+            FeignException.NotFound ex,
+            HttpServletRequest request
+    ) {
+        return buildErrorResponse(
+                HttpStatus.BAD_REQUEST,
+                "Moneda no soportada por el proveedor externo",
+                request
+        );
+    }
+
+    @ExceptionHandler(FeignException.class)
+    public ResponseEntity<ErrorResponseDTO> handleFeignException(
+            FeignException ex,
+            HttpServletRequest request
+    ) {
+        return buildErrorResponse(
+                HttpStatus.BAD_GATEWAY,
+                "Proveedor externo de divisas temporalmente no disponible",
+                request
+        );
     }
 
     @ExceptionHandler(Exception.class)

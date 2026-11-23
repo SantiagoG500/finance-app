@@ -19,12 +19,24 @@ spring:
         ddl-auto: ${JPA_HIBERNATE_DDL_AUTO:update}
     open-in-view: ${JPA_OPEN_IN_VIEW:false}
 
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connect-timeout: 5000
+            read-timeout: 5000
+
 jwt:
-  secret: ${JWT_SECRET}
+  secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
 
 services:
   notification:
     url: ${NOTIFICATION_SERVICE_URL:http://localhost:8082}
+  frankfurter:
+    url: ${FRANKFURTER_API_URL:https://api.frankfurter.dev/v1}
+  restcountries:
+    url: ${RESTCOUNTRIES_API_URL:https://restcountries.com/v3.1}
 
 server:
   port: ${SERVER_PORT:8081}

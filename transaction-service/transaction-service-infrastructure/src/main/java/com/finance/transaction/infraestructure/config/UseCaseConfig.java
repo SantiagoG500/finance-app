@@ -1,8 +1,11 @@
 package com.finance.transaction.infraestructure.config;
 
+import com.finance.transaction.domain.model.gateway.CurrencyMetadataGateway;
+import com.finance.transaction.domain.model.gateway.ExchangeRateGateway;
 import com.finance.transaction.domain.model.gateway.MetaAhorrosGateway;
 import com.finance.transaction.domain.model.gateway.NotificationGateway;
 import com.finance.transaction.domain.model.gateway.TransaccionGateway;
+import com.finance.transaction.domain.usecase.DivisasUseCase;
 import com.finance.transaction.domain.usecase.MetaAhorrosUseCase;
 import com.finance.transaction.domain.usecase.ProyeccionesUseCase;
 import com.finance.transaction.domain.usecase.TransaccionUseCase;
@@ -35,5 +38,14 @@ public class UseCaseConfig {
             NotificationGateway notificationGateway
     ) {
         return new MetaAhorrosUseCase(mGateway, notificationGateway);
+    }
+
+    @Bean
+    public DivisasUseCase divisasUseCase(
+            ProyeccionesUseCase proyeccionesUseCase,
+            ExchangeRateGateway exchangeRateGateway,
+            CurrencyMetadataGateway currencyMetadataGateway
+    ) {
+        return new DivisasUseCase(proyeccionesUseCase, exchangeRateGateway, currencyMetadataGateway);
     }
 }
