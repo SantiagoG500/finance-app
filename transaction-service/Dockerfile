@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ==========================================
 # Build Stage
 # ==========================================
@@ -21,14 +22,12 @@ COPY notification-service/notification-service-domain/pom.xml notification-servi
 COPY notification-service/notification-service-infrastructure/pom.xml notification-service/notification-service-infrastructure/
 COPY notification-service/notification-service-boot/pom.xml notification-service/notification-service-boot/
 
-# Cache Maven dependencies offline
-RUN mvn dependency:go-offline -B
-
 # Copy transaction-service module source code
 COPY transaction-service/ transaction-service/
 
 # Package the transaction-service-boot module and its required dependencies
-RUN mvn clean package -DskipTests -pl :transaction-service-boot -am
+RUN --mount=type=cache,id=m2-cache,target=/root/.m2,sharing=locked \
+    mvn clean package -DskipTests -pl :transaction-service-boot -am -B
 
 # ==========================================
 # Runtime Stage

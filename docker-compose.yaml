@@ -1,8 +1,8 @@
 services:
   account-service:
     build:
-      context: ./account-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: account-service/Dockerfile
     container_name: account-service
     restart: unless-stopped
     ports:
@@ -18,14 +18,16 @@ services:
       JPA_OPEN_IN_VIEW: "false"
       JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
       JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
+      NOTIFICATION_SERVICE_URL: http://notification-service:8082
       JAVA_TOOL_OPTIONS: "-Xmx512m -Xms256m"
     networks:
       - finanzas-net
 
   transaction-service:
     build:
-      context: ./transaction-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: transaction-service/Dockerfile
     container_name: transaction-service
     restart: unless-stopped
     ports:
@@ -44,14 +46,15 @@ services:
       JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
       JWT_SECRET: ${JWT_SECRET}
       ACCOUNT_SERVICE_URL: http://account-service:8080
+      NOTIFICATION_SERVICE_URL: http://notification-service:8082
       JAVA_TOOL_OPTIONS: "-Xmx512m -Xms256m"
     networks:
       - finanzas-net
 
   notification-service:
     build:
-      context: ./notification-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: notification-service/Dockerfile
     container_name: notification-service
     restart: unless-stopped
     ports:
@@ -63,6 +66,8 @@ services:
       SPRING_APPLICATION_NAME: notification-service
       JWT_SECRET: ${JWT_SECRET}
       ACCOUNT_SERVICE_URL: http://account-service:8080
+      emailuser: ${emailuser}
+      emailpass: ${emailpass}
       JAVA_TOOL_OPTIONS: "-Xmx350m -Xms128m"
     networks:
       - finanzas-net
