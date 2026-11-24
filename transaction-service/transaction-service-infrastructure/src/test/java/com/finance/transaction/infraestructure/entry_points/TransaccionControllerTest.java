@@ -6,8 +6,7 @@ import com.finance.transaction.domain.model.Transaccion;
 import com.finance.transaction.domain.model.enumns.FrecuenciaType;
 import com.finance.transaction.domain.model.enumns.TransaccionType;
 import com.finance.transaction.domain.usecase.TransaccionUseCase;
-import com.finance.transaction.infraestructure.entry_points.dto.MessageResponseDTO;
-import com.finance.transaction.infraestructure.entry_points.dto.TransaccionRequestDTO;
+import com.finance.transaction.infraestructure.entry_points.dto.CreateTransaccionRequestDTO;
 import com.finance.transaction.infraestructure.entry_points.dto.TransaccionResponseDTO;
 import com.finance.transaction.infraestructure.entry_points.exception.GlobalExceptionHandler;
 import com.finance.transaction.infraestructure.mapper.TransaccionMapper;
@@ -18,14 +17,17 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.math.BigDecimal;
@@ -39,8 +41,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -71,7 +74,8 @@ class TransaccionControllerTest {
         userId = UUID.randomUUID().toString();
         validJwt = Jwt.withTokenValue("mock-jwt-token")
                 .header("alg", "HS256")
-                .subject(userId)
+                .subject("user@finance.com")
+                .claim("userId", userId)
                 .claim("email", "user@finance.com")
                 .issuedAt(Instant.now())
                 .expiresAt(Instant.now().plusSeconds(3600))
@@ -89,12 +93,11 @@ class TransaccionControllerTest {
     }
 
     @Test
-    void shouldSaveTransactionAndReturn201CreatedWhenRequestIsValid() {
+    void shouldSaveTransactionAndReturn201CreatedWithUserIdWhenRequestIsValid() {
         // Arrange
         String txId = UUID.randomUUID().toString();
         String catId = UUID.randomUUID().toString();
-        TransaccionRequestDTO request = new TransaccionRequestDTO(
-                txId,
+        CreateTransaccionRequestDTO request = new CreateTransaccionRequestDTO(
                 catId,
                 new BigDecimal("500.00"),
                 "USD",
@@ -107,107 +110,92 @@ class TransaccionControllerTest {
         TransaccionResponseDTO responseDto = buildResponseDto(txId, catId);
 
         when(transaccionMapper.requestDtoToTransaccion(request, userId)).thenReturn(domain);
-        when(transaccionUseCase.guardarTransaccion(domain, "user@finance.com")).thenReturn(domain);
+        when(transaccionUseCase.guardarTransaccion(domain, "user@finance.com", "Bearer mock-jwt-token")).thenReturn(domain);
         when(transaccionMapper.transaccionToResponseDto(domain)).thenReturn(responseDto);
 
         // Act
-        ResponseEntity<TransaccionResponseDTO> response = transaccionController.guardarTransaccion(request, validJwt);
+        ResponseEntity<TransaccionResponseDTO> response = transaccionController.guardarTransaccion(
+                request,
+                validJwt,
+                "Bearer mock-jwt-token"
+        );
 
         // Assert
         assertEquals(HttpStatus.CREATED, response.getStatusCode());
         assertNotNull(response.getBody());
         assertEquals(txId, response.getBody().getId());
+        assertEquals(userId, response.getBody().getUserId());
     }
 
     @Test
     void shouldReturn400BadRequestWhenSaveTransactionPayloadIsInvalid() throws Exception {
         // Arrange
-        String invalidJson = "{\"id\":\"\",\"categoryId\":\"\",\"amount\":-10,\"currency\":\"\",\"type\":null,\"frequency\":null,\"transactionDate\":null}";
+        String invalidJson = "{\"categoryId\":\"\",\"amount\":-10,\"currency\":\"INVALID\",\"type\":null,\"frequency\":null,\"transactionDate\":null}";
 
         // Act
+        ResultActions response = mockMvc.perform(post("/api/v1/finances/save")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(invalidJson));
+
         // Assert
-        mockMvc.perform(post("/api/v1/finances/save")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(invalidJson))
-                .andExpect(status().isBadRequest())
+        response.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400));
     }
 
     @Test
-    void shouldGetTransactionByIdAndReturn200OkWhenFound() throws Exception {
+    void shouldGetTransactionByIdAndReturn200OkWithUserIdWhenFound() throws Exception {
         // Arrange
         String txId = UUID.randomUUID().toString();
         String catId = UUID.randomUUID().toString();
         Transaccion domain = buildDomain(txId, catId);
         TransaccionResponseDTO responseDto = buildResponseDto(txId, catId);
 
-        when(transaccionUseCase.obtenerTransaccion(txId, userId)).thenReturn(domain);
+        when(transaccionUseCase.obtenerTransaccion(eq(txId), eq(userId), any())).thenReturn(domain);
         when(transaccionMapper.transaccionToResponseDto(domain)).thenReturn(responseDto);
 
         // Act
+        ResultActions response = mockMvc.perform(get("/api/v1/finances/get/{id}", txId)
+                .header("Authorization", "Bearer mock-jwt-token"));
+
         // Assert
-        mockMvc.perform(get("/api/v1/finances/get/{id}", txId))
-                .andExpect(status().isOk())
+        response.andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(txId))
+                .andExpect(jsonPath("$.userId").value(userId))
                 .andExpect(jsonPath("$.currency").value("USD"));
     }
 
     @Test
-    void shouldReturn404NotFoundWhenTransactionByIdIsMissing() throws Exception {
+    void shouldReturn404NotFoundOr401Or403Or409WhenGetTransactionByIdFails() throws Exception {
         // Arrange
-        String txId = UUID.randomUUID().toString();
-        when(transaccionUseCase.obtenerTransaccion(txId, userId)).thenReturn(null);
+        String missingId = UUID.randomUUID().toString();
+        String unauthorizedId = UUID.randomUUID().toString();
+        String forbiddenId = UUID.randomUUID().toString();
+        String conflictId = UUID.randomUUID().toString();
+
+        when(transaccionUseCase.obtenerTransaccion(eq(missingId), eq(userId), any())).thenReturn(null);
+        when(transaccionUseCase.obtenerTransaccion(eq(unauthorizedId), eq(userId), any()))
+                .thenThrow(new SecurityException("Sesión expirada"));
+        when(transaccionUseCase.obtenerTransaccion(eq(forbiddenId), eq(userId), any()))
+                .thenThrow(new AccessDeniedException("Acceso denegado"));
+        when(transaccionUseCase.obtenerTransaccion(eq(conflictId), eq(userId), any()))
+                .thenThrow(new DataIntegrityViolationException("Constraint"));
 
         // Act
+        ResultActions notFoundRes = mockMvc.perform(get("/api/v1/finances/get/{id}", missingId));
+        ResultActions unauthorizedRes = mockMvc.perform(get("/api/v1/finances/get/{id}", unauthorizedId));
+        ResultActions forbiddenRes = mockMvc.perform(get("/api/v1/finances/get/{id}", forbiddenId));
+        ResultActions conflictRes = mockMvc.perform(get("/api/v1/finances/get/{id}", conflictId));
+
         // Assert
-        mockMvc.perform(get("/api/v1/finances/get/{id}", txId))
-                .andExpect(status().isNotFound())
+        notFoundRes.andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.message").value("Transacción no encontrada"));
-    }
-
-    @Test
-    void shouldUpdateTransactionAndReturn200OkWhenRequestIsValid() {
-        // Arrange
-        String txId = UUID.randomUUID().toString();
-        String catId = UUID.randomUUID().toString();
-        TransaccionRequestDTO request = new TransaccionRequestDTO(
-                txId,
-                catId,
-                new BigDecimal("750.00"),
-                "USD",
-                TransaccionType.EXPENSE,
-                FrecuenciaType.MONTHLY,
-                "Renta",
-                LocalDate.now()
-        );
-        Transaccion domain = buildDomain(txId, catId);
-        TransaccionResponseDTO responseDto = buildResponseDto(txId, catId);
-
-        when(transaccionMapper.requestDtoToTransaccion(request, userId)).thenReturn(domain);
-        when(transaccionUseCase.actualizarTransaccion(domain)).thenReturn(domain);
-        when(transaccionMapper.transaccionToResponseDto(domain)).thenReturn(responseDto);
-
-        // Act
-        ResponseEntity<TransaccionResponseDTO> response = transaccionController.actualizarTransaccion(request, validJwt);
-
-        // Assert
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertNotNull(response.getBody());
-        assertEquals(txId, response.getBody().getId());
-    }
-
-    @Test
-    void shouldDeleteTransactionAndReturn200OkWithMessageResponse() throws Exception {
-        // Arrange
-        String txId = UUID.randomUUID().toString();
-        doNothing().when(transaccionUseCase).eliminarTransaccion(txId, userId);
-
-        // Act
-        // Assert
-        mockMvc.perform(delete("/api/v1/finances/delete/{id}", txId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Transacción eliminada exitosamente"));
+        unauthorizedRes.andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401));
+        forbiddenRes.andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+        conflictRes.andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409));
     }
 
     @Test
@@ -218,16 +206,18 @@ class TransaccionControllerTest {
         Transaccion domain = buildDomain(txId, catId);
         TransaccionResponseDTO responseDto = buildResponseDto(txId, catId);
 
-        when(transaccionUseCase.obtenerTransaccionesPorTipo(userId, TransaccionType.INCOME))
+        when(transaccionUseCase.obtenerTransaccionesPorTipo(eq(userId), eq(TransaccionType.INCOME), any()))
                 .thenReturn(List.of(domain));
         when(transaccionMapper.transaccionToResponseDto(domain)).thenReturn(responseDto);
 
         // Act
+        ResultActions response = mockMvc.perform(get("/api/v1/finances/transactions/by-type")
+                .param("type", "INCOME"));
+
         // Assert
-        mockMvc.perform(get("/api/v1/finances/transactions/by-type")
-                        .param("type", "INCOME"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(txId));
+        response.andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(txId))
+                .andExpect(jsonPath("$[0].userId").value(userId));
     }
 
     @Test
@@ -236,13 +226,14 @@ class TransaccionControllerTest {
         String invalidType = "INVALID_TYPE";
 
         // Act
+        ResultActions badEnumRes = mockMvc.perform(get("/api/v1/finances/transactions/by-type")
+                .param("type", invalidType));
+        ResultActions missingParamRes = mockMvc.perform(get("/api/v1/finances/transactions/by-type"));
+
         // Assert
-        mockMvc.perform(get("/api/v1/finances/transactions/by-type")
-                        .param("type", invalidType))
-                .andExpect(status().isBadRequest())
+        badEnumRes.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400));
-        mockMvc.perform(get("/api/v1/finances/transactions/by-type"))
-                .andExpect(status().isBadRequest())
+        missingParamRes.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400));
     }
 
@@ -253,9 +244,10 @@ class TransaccionControllerTest {
         String txId = UUID.randomUUID().toString();
 
         // Act
+        ResultActions response = mockMvc.perform(get("/api/v1/finances/get/{id}", txId));
+
         // Assert
-        mockMvc.perform(get("/api/v1/finances/get/{id}", txId))
-                .andExpect(status().isBadRequest())
+        response.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.message").value("El token JWT no contiene un identificador de usuario válido"));
     }
@@ -278,6 +270,7 @@ class TransaccionControllerTest {
     private TransaccionResponseDTO buildResponseDto(String txId, String catId) {
         return TransaccionResponseDTO.builder()
                 .id(txId)
+                .userId(userId)
                 .categoryId(catId)
                 .amount(new BigDecimal("500.00"))
                 .currency("USD")

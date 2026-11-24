@@ -2,21 +2,42 @@ package com.finance.account.domain.usecase;
 
 import com.finance.account.domain.gateway.NotificationGateway;
 import com.finance.account.domain.gateway.PasswordEncoderGateway;
+import com.finance.account.domain.gateway.TokenBlacklistGateway;
 import com.finance.account.domain.gateway.TokenGateway;
 import com.finance.account.domain.model.AuthResult;
 import com.finance.account.domain.model.Usuario;
 import com.finance.account.domain.model.UsuarioGateWay;
-import lombok.RequiredArgsConstructor;
 
+import java.time.Instant;
+import java.util.NoSuchElementException;
 import java.util.UUID;
 
-@RequiredArgsConstructor
 public class AuthUseCase {
 
     private final UsuarioGateWay usuarioGateWay;
     private final PasswordEncoderGateway passwordEncoderGateway;
     private final TokenGateway tokenGateway;
     private final NotificationGateway notificationGateway;
+    private final TokenBlacklistGateway tokenBlacklistGateway;
+
+    public AuthUseCase(UsuarioGateWay usuarioGateWay,
+                       PasswordEncoderGateway passwordEncoderGateway,
+                       TokenGateway tokenGateway,
+                       NotificationGateway notificationGateway) {
+        this(usuarioGateWay, passwordEncoderGateway, tokenGateway, notificationGateway, null);
+    }
+
+    public AuthUseCase(UsuarioGateWay usuarioGateWay,
+                       PasswordEncoderGateway passwordEncoderGateway,
+                       TokenGateway tokenGateway,
+                       NotificationGateway notificationGateway,
+                       TokenBlacklistGateway tokenBlacklistGateway) {
+        this.usuarioGateWay = usuarioGateWay;
+        this.passwordEncoderGateway = passwordEncoderGateway;
+        this.tokenGateway = tokenGateway;
+        this.notificationGateway = notificationGateway;
+        this.tokenBlacklistGateway = tokenBlacklistGateway;
+    }
 
     public AuthResult register(String email, String rawPassword, String fullName) {
         if (email == null || email.isBlank()) {
@@ -28,7 +49,7 @@ public class AuthUseCase {
 
         String normalizedEmail = email.trim().toLowerCase();
         if (usuarioGateWay.obtenerUsuarioPorEmail(normalizedEmail) != null) {
-            throw new IllegalArgumentException("Ya existe una cuenta registrada con este correo electrónico");
+            throw new IllegalStateException("Ya existe una cuenta registrada con este correo electrónico");
         }
 
         String encodedPassword = passwordEncoderGateway.encode(rawPassword);
@@ -44,9 +65,11 @@ public class AuthUseCase {
 
         Usuario guardado = usuarioGateWay.guardarUsuario(usuario);
 
-        try {
-            notificationGateway.notifyUserRegistration(guardado.getEmail());
-        } catch (Exception ignored) {
+        if (notificationGateway != null) {
+            try {
+                notificationGateway.notifyUserRegistration(guardado.getEmail());
+            } catch (Exception ignored) {
+            }
         }
 
         String token = tokenGateway.generateToken(guardado.getId(), guardado.getEmail(), guardado.getFullName());
@@ -72,11 +95,21 @@ public class AuthUseCase {
             throw new IllegalArgumentException("Credenciales inválidas");
         }
 
-        String token = tokenGateway.generateToken(usuario.getId(), usuario.getEmail(), usuario.getFullName());
+        if (tokenBlacklistGateway != null && tokenBlacklistGateway.hasActiveSession(normalizedEmail)) {
+            throw new IllegalStateException("El usuario ya tiene una sesión activa. Debe cerrar sesión antes de volver a iniciar.");
+        }
 
-        try {
-            notificationGateway.notifyLoginAlert(usuario.getEmail());
-        } catch (Exception ignored) {
+        String token = tokenGateway.generateToken(usuario.getId(), usuario.getEmail(), usuario.getFullName());
+        Instant expiresAt = tokenGateway.extractExpiration(token);
+        if (tokenBlacklistGateway != null) {
+            tokenBlacklistGateway.registerActiveSession(normalizedEmail, token, expiresAt);
+        }
+
+        if (notificationGateway != null) {
+            try {
+                notificationGateway.notifyLoginAlert(usuario.getEmail());
+            } catch (Exception ignored) {
+            }
         }
 
         return new AuthResult(token, usuario);
@@ -98,7 +131,7 @@ public class AuthUseCase {
         String normalizedEmail = email.trim().toLowerCase();
         Usuario usuario = usuarioGateWay.obtenerUsuarioPorEmail(normalizedEmail);
         if (usuario == null) {
-            throw new IllegalArgumentException("Usuario no encontrado");
+            throw new NoSuchElementException("Usuario no encontrado");
         }
 
         if (!Boolean.TRUE.equals(usuario.getIsActive())) {
@@ -113,9 +146,37 @@ public class AuthUseCase {
         usuario.setPasswordHash(encodedNewPassword);
         usuarioGateWay.actualizarUsuario(usuario);
 
-        try {
-            notificationGateway.notifyPasswordChanged(usuario.getEmail());
-        } catch (Exception ignored) {
+        if (notificationGateway != null) {
+            try {
+                notificationGateway.notifyPasswordChanged(usuario.getEmail());
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    public void logout(String authorizationHeader) {
+        if (authorizationHeader == null || authorizationHeader.isBlank()) {
+            throw new IllegalArgumentException("El token de autorización es obligatorio");
+        }
+
+        String trimmed = authorizationHeader.trim();
+        String token;
+        if (trimmed.equalsIgnoreCase("Bearer")) {
+            token = "";
+        } else if (trimmed.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            token = trimmed.substring(7).trim();
+        } else {
+            token = trimmed;
+        }
+
+        if (token.isEmpty() || !tokenGateway.validateToken(token)) {
+            throw new IllegalArgumentException("Token JWT inválido o expirado");
+        }
+
+        Instant expiresAt = tokenGateway.extractExpiration(token);
+        if (tokenBlacklistGateway != null) {
+            tokenBlacklistGateway.revokeToken(token, expiresAt);
+            tokenBlacklistGateway.clearActiveSessionByToken(token);
         }
     }
 }

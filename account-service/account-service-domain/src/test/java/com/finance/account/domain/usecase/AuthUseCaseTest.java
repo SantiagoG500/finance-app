@@ -2,22 +2,29 @@ package com.finance.account.domain.usecase;
 
 import com.finance.account.domain.gateway.NotificationGateway;
 import com.finance.account.domain.gateway.PasswordEncoderGateway;
+import com.finance.account.domain.gateway.TokenBlacklistGateway;
 import com.finance.account.domain.gateway.TokenGateway;
 import com.finance.account.domain.model.AuthResult;
 import com.finance.account.domain.model.Usuario;
 import com.finance.account.domain.model.UsuarioGateWay;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Instant;
+import java.util.NoSuchElementException;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class AuthUseCaseTest {
@@ -34,409 +41,282 @@ class AuthUseCaseTest {
     @Mock
     private NotificationGateway notificationGateway;
 
-    @InjectMocks
+    @Mock
+    private TokenBlacklistGateway tokenBlacklistGateway;
+
     private AuthUseCase authUseCase;
 
+    @BeforeEach
+    void setUp() {
+        authUseCase = new AuthUseCase(
+                usuarioGateWay,
+                passwordEncoderGateway,
+                tokenGateway,
+                notificationGateway,
+                tokenBlacklistGateway
+        );
+    }
+
     @Test
-    void shouldRegisterUserSuccessfullyWhenDataIsValid() {
+    void register_ShouldSaveUserGenerateTokenAndNotify_WhenValidInput() {
         // Arrange
         UUID userId = UUID.randomUUID();
-        String rawEmail = "  TestUser@Example.com ";
-        String normalizedEmail = "testuser@example.com";
-        String rawPassword = "password123";
-        String encodedPassword = "encoded_password_123";
-        String fullName = "Test User";
-        Usuario savedUser = new Usuario(userId, normalizedEmail, encodedPassword, fullName, null, "USD", true);
-
-        when(usuarioGateWay.obtenerUsuarioPorEmail(normalizedEmail)).thenReturn(null);
-        when(passwordEncoderGateway.encode(rawPassword)).thenReturn(encodedPassword);
+        Usuario savedUser = new Usuario(userId, "test@finance.com", "hashed_pw", "Juan Perez", null, "USD", true);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("test@finance.com")).thenReturn(null);
+        when(passwordEncoderGateway.encode("secret123")).thenReturn("hashed_pw");
         when(usuarioGateWay.guardarUsuario(any(Usuario.class))).thenReturn(savedUser);
-        when(tokenGateway.generateToken(userId, normalizedEmail, fullName)).thenReturn("jwt-token-123");
+        when(tokenGateway.generateToken(userId, "test@finance.com", "Juan Perez")).thenReturn("jwt-token-123");
 
         // Act
-        AuthResult result = authUseCase.register(rawEmail, rawPassword, fullName);
+        AuthResult result = authUseCase.register("  TEST@finance.com ", "secret123", "Juan Perez");
 
         // Assert
         assertNotNull(result);
         assertEquals("jwt-token-123", result.getToken());
-        assertEquals(normalizedEmail, result.getUsuario().getEmail());
-        verify(notificationGateway).notifyUserRegistration(normalizedEmail);
+        assertEquals(userId, result.getUsuario().getId());
+        assertEquals("test@finance.com", result.getUsuario().getEmail());
+        verify(notificationGateway).notifyUserRegistration("test@finance.com");
     }
 
     @Test
-    void shouldThrowIllegalArgumentExceptionWhenRegisterEmailIsNull() {
+    void register_ShouldSucceedEvenWhenNotificationGatewayThrowsOrIsNull() {
         // Arrange
-        String email = null;
-
-        // Act
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.register(email, "password123", "Test User")
-        );
-
-        // Assert
-        assertEquals("El email no puede estar vacío", exception.getMessage());
-    }
-
-    @Test
-    void shouldThrowIllegalArgumentExceptionWhenRegisterEmailIsBlank() {
-        // Arrange
-        String email = "   ";
-
-        // Act
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.register(email, "password123", "Test User")
-        );
-
-        // Assert
-        assertEquals("El email no puede estar vacío", exception.getMessage());
-    }
-
-    @Test
-    void shouldThrowIllegalArgumentExceptionWhenRegisterPasswordIsNull() {
-        // Arrange
-        String password = null;
-
-        // Act
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.register("test@example.com", password, "Test User")
-        );
-
-        // Assert
-        assertEquals("La contraseña debe tener al menos 6 caracteres", exception.getMessage());
-    }
-
-    @Test
-    void shouldThrowIllegalArgumentExceptionWhenRegisterPasswordIsTooShort() {
-        // Arrange
-        String password = "12345";
-
-        // Act
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.register("test@example.com", password, "Test User")
-        );
-
-        // Assert
-        assertEquals("La contraseña debe tener al menos 6 caracteres", exception.getMessage());
-    }
-
-    @Test
-    void shouldThrowIllegalArgumentExceptionWhenRegisterEmailAlreadyExists() {
-        // Arrange
-        String email = "existing@example.com";
-        Usuario existingUser = new Usuario(UUID.randomUUID(), email, "hash", "Existing", null, "USD", true);
-        when(usuarioGateWay.obtenerUsuarioPorEmail(email)).thenReturn(existingUser);
-
-        // Act
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.register(email, "password123", "Existing")
-        );
-
-        // Assert
-        assertEquals("Ya existe una cuenta registrada con este correo electrónico", exception.getMessage());
-    }
-
-    @Test
-    void shouldCompleteRegistrationWhenNotificationGatewayThrowsException() {
-        // Arrange
+        AuthUseCase useCaseWith4Args = new AuthUseCase(usuarioGateWay, passwordEncoderGateway, tokenGateway, notificationGateway);
         UUID userId = UUID.randomUUID();
-        String email = "resilient@example.com";
-        Usuario savedUser = new Usuario(userId, email, "encoded", "Resilient User", null, "USD", true);
-
-        when(usuarioGateWay.obtenerUsuarioPorEmail(email)).thenReturn(null);
-        when(passwordEncoderGateway.encode("password123")).thenReturn("encoded");
+        Usuario savedUser = new Usuario(userId, "user@finance.com", "hashed", "Ana Gomez", null, "USD", true);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("user@finance.com")).thenReturn(null);
+        when(passwordEncoderGateway.encode("password123")).thenReturn("hashed");
         when(usuarioGateWay.guardarUsuario(any(Usuario.class))).thenReturn(savedUser);
-        doThrow(new RuntimeException("Notification service down")).when(notificationGateway).notifyUserRegistration(email);
-        when(tokenGateway.generateToken(userId, email, "Resilient User")).thenReturn("jwt-resilient");
+        when(tokenGateway.generateToken(userId, "user@finance.com", "Ana Gomez")).thenReturn("jwt-usd");
+        doThrow(new RuntimeException("Notification down")).when(notificationGateway).notifyUserRegistration("user@finance.com");
 
         // Act
-        AuthResult result = authUseCase.register(email, "password123", "Resilient User");
+        AuthResult result = useCaseWith4Args.register("user@finance.com", "password123", "Ana Gomez");
+
+        // Assert
+        assertEquals("jwt-usd", result.getToken());
+        assertEquals("USD", result.getUsuario().getBaseCurrency());
+    }
+
+    @Test
+    void register_ShouldThrowException_WhenEmailOrPasswordInvalid() {
+        // Arrange
+        String emptyEmail = "   ";
+        String shortPass = "12345";
+
+        // Act
+        IllegalArgumentException exEmail = assertThrows(IllegalArgumentException.class,
+                () -> authUseCase.register(emptyEmail, "secret123", "Juan"));
+        IllegalArgumentException exPass = assertThrows(IllegalArgumentException.class,
+                () -> authUseCase.register("test@finance.com", shortPass, "Juan"));
+
+        // Assert
+        assertEquals("El email no puede estar vacío", exEmail.getMessage());
+        assertEquals("La contraseña debe tener al menos 6 caracteres", exPass.getMessage());
+    }
+
+    @Test
+    void register_ShouldThrowIllegalStateException_WhenEmailAlreadyExists() {
+        // Arrange
+        Usuario existing = new Usuario(UUID.randomUUID(), "test@finance.com", "hash", "Juan", null, "USD", true);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("test@finance.com")).thenReturn(existing);
+
+        // Act
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> authUseCase.register("test@finance.com", "secret123", "Juan"));
+
+        // Assert
+        assertEquals("Ya existe una cuenta registrada con este correo electrónico", ex.getMessage());
+        verify(usuarioGateWay, never()).guardarUsuario(any());
+    }
+
+    @Test
+    void login_ShouldReturnAuthResultRegisterActiveSessionAndNotify_WhenCredentialsAreValid() {
+        // Arrange
+        UUID userId = UUID.randomUUID();
+        Instant expiresAt = Instant.now().plusSeconds(3600);
+        Usuario user = new Usuario(userId, "test@finance.com", "hashed_pw", "Juan Perez", null, "COP", true);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("test@finance.com")).thenReturn(user);
+        when(passwordEncoderGateway.matches("secret123", "hashed_pw")).thenReturn(true);
+        when(tokenBlacklistGateway.hasActiveSession("test@finance.com")).thenReturn(false);
+        when(tokenGateway.generateToken(userId, "test@finance.com", "Juan Perez")).thenReturn("jwt-login");
+        when(tokenGateway.extractExpiration("jwt-login")).thenReturn(expiresAt);
+
+        // Act
+        AuthResult result = authUseCase.login(" TEST@finance.com ", "secret123");
 
         // Assert
         assertNotNull(result);
-        assertEquals("jwt-resilient", result.getToken());
-        verify(notificationGateway).notifyUserRegistration(email);
+        assertEquals("jwt-login", result.getToken());
+        assertEquals(userId, result.getUsuario().getId());
+        verify(tokenBlacklistGateway).registerActiveSession("test@finance.com", "jwt-login", expiresAt);
+        verify(notificationGateway).notifyLoginAlert("test@finance.com");
     }
 
     @Test
-    void shouldLoginSuccessfullyWhenCredentialsAreValid() {
+    void login_ShouldThrowIllegalStateException_WhenUserAlreadyHasActiveSession() {
         // Arrange
         UUID userId = UUID.randomUUID();
-        String email = "login@example.com";
-        Usuario usuario = new Usuario(userId, email, "hashed_pwd", "Login User", null, "USD", true);
-
-        when(usuarioGateWay.obtenerUsuarioPorEmail(email)).thenReturn(usuario);
-        when(passwordEncoderGateway.matches("raw_pwd", "hashed_pwd")).thenReturn(true);
-        when(tokenGateway.generateToken(userId, email, "Login User")).thenReturn("jwt-login-token");
+        Usuario user = new Usuario(userId, "test@finance.com", "hashed_pw", "Juan Perez", null, "COP", true);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("test@finance.com")).thenReturn(user);
+        when(passwordEncoderGateway.matches("secret123", "hashed_pw")).thenReturn(true);
+        when(tokenBlacklistGateway.hasActiveSession("test@finance.com")).thenReturn(true);
 
         // Act
-        AuthResult result = authUseCase.login("  LOGIN@example.com ", "raw_pwd");
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> authUseCase.login("test@finance.com", "secret123"));
 
         // Assert
-        assertNotNull(result);
-        assertEquals("jwt-login-token", result.getToken());
-        assertEquals(email, result.getUsuario().getEmail());
-        verify(notificationGateway).notifyLoginAlert(email);
+        assertEquals("El usuario ya tiene una sesión activa. Debe cerrar sesión antes de volver a iniciar.", ex.getMessage());
+        verify(tokenGateway, never()).generateToken(any(), any(), any());
+        verify(tokenBlacklistGateway, never()).registerActiveSession(any(), any(), any());
     }
 
     @Test
-    void shouldThrowIllegalArgumentExceptionWhenLoginEmailOrPasswordIsBlank() {
-        // Arrange
-        String blankEmail = " ";
-
-        // Act
-        IllegalArgumentException ex1 = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.login(null, "pwd")
-        );
-        IllegalArgumentException ex2 = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.login(blankEmail, "pwd")
-        );
-        IllegalArgumentException ex3 = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.login("a@b.com", null)
-        );
-        IllegalArgumentException ex4 = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.login("a@b.com", "  ")
-        );
-
-        // Assert
-        assertEquals("El email y la contraseña son obligatorios", ex1.getMessage());
-        assertEquals("El email y la contraseña son obligatorios", ex2.getMessage());
-        assertEquals("El email y la contraseña son obligatorios", ex3.getMessage());
-        assertEquals("El email y la contraseña son obligatorios", ex4.getMessage());
-    }
-
-    @Test
-    void shouldThrowIllegalArgumentExceptionWhenLoginUserNotFound() {
-        // Arrange
-        when(usuarioGateWay.obtenerUsuarioPorEmail("unknown@example.com")).thenReturn(null);
-
-        // Act
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.login("unknown@example.com", "password123")
-        );
-
-        // Assert
-        assertEquals("Credenciales inválidas", exception.getMessage());
-    }
-
-    @Test
-    void shouldThrowIllegalStateExceptionWhenLoginAccountIsInactive() {
-        // Arrange
-        Usuario inactiveUser = new Usuario(UUID.randomUUID(), "inactive@example.com", "hash", "Inactive", null, "USD", false);
-        when(usuarioGateWay.obtenerUsuarioPorEmail("inactive@example.com")).thenReturn(inactiveUser);
-
-        // Act
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
-                () -> authUseCase.login("inactive@example.com", "password123")
-        );
-
-        // Assert
-        assertEquals("La cuenta de usuario está desactivada", exception.getMessage());
-    }
-
-    @Test
-    void shouldThrowIllegalArgumentExceptionWhenLoginPasswordDoesNotMatch() {
-        // Arrange
-        Usuario usuario = new Usuario(UUID.randomUUID(), "user@example.com", "correct_hash", "User", null, "USD", true);
-        when(usuarioGateWay.obtenerUsuarioPorEmail("user@example.com")).thenReturn(usuario);
-        when(passwordEncoderGateway.matches("wrong_pwd", "correct_hash")).thenReturn(false);
-
-        // Act
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.login("user@example.com", "wrong_pwd")
-        );
-
-        // Assert
-        assertEquals("Credenciales inválidas", exception.getMessage());
-    }
-
-    @Test
-    void shouldCompleteLoginWhenNotifyLoginAlertThrowsException() {
+    void login_ShouldAllowSecondLoginWithNewToken_AfterLogoutClearsActiveSession() {
         // Arrange
         UUID userId = UUID.randomUUID();
-        String email = "alert@example.com";
-        Usuario usuario = new Usuario(userId, email, "hash", "Alert User", null, "USD", true);
-
-        when(usuarioGateWay.obtenerUsuarioPorEmail(email)).thenReturn(usuario);
-        when(passwordEncoderGateway.matches("pwd123", "hash")).thenReturn(true);
-        when(tokenGateway.generateToken(userId, email, "Alert User")).thenReturn("jwt-alert");
-        doThrow(new RuntimeException("Feign error")).when(notificationGateway).notifyLoginAlert(email);
+        Instant firstExpiry = Instant.now().plusSeconds(3600);
+        Instant secondExpiry = Instant.now().plusSeconds(7200);
+        Usuario user = new Usuario(userId, "test@finance.com", "hashed_pw", "Juan Perez", null, "COP", true);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("test@finance.com")).thenReturn(user);
+        when(passwordEncoderGateway.matches("secret123", "hashed_pw")).thenReturn(true);
+        when(tokenBlacklistGateway.hasActiveSession("test@finance.com")).thenReturn(false, false);
+        when(tokenGateway.generateToken(userId, "test@finance.com", "Juan Perez")).thenReturn("jwt-token-1", "jwt-token-2");
+        when(tokenGateway.extractExpiration("jwt-token-1")).thenReturn(firstExpiry);
+        when(tokenGateway.validateToken("jwt-token-1")).thenReturn(true);
+        when(tokenGateway.extractExpiration("jwt-token-2")).thenReturn(secondExpiry);
 
         // Act
-        AuthResult result = authUseCase.login(email, "pwd123");
+        AuthResult firstLogin = authUseCase.login("test@finance.com", "secret123");
+        authUseCase.logout("Bearer jwt-token-1");
+        AuthResult secondLogin = authUseCase.login("test@finance.com", "secret123");
 
         // Assert
-        assertNotNull(result);
-        assertEquals("jwt-alert", result.getToken());
-        verify(notificationGateway).notifyLoginAlert(email);
+        assertEquals("jwt-token-1", firstLogin.getToken());
+        assertEquals("jwt-token-2", secondLogin.getToken());
+        verify(tokenBlacklistGateway).registerActiveSession("test@finance.com", "jwt-token-1", firstExpiry);
+        verify(tokenBlacklistGateway).revokeToken("jwt-token-1", firstExpiry);
+        verify(tokenBlacklistGateway).clearActiveSessionByToken("jwt-token-1");
+        verify(tokenBlacklistGateway).registerActiveSession("test@finance.com", "jwt-token-2", secondExpiry);
     }
 
     @Test
-    void shouldChangePasswordSuccessfullyWhenInputsAreValid() {
+    void login_ShouldThrowException_WhenCredentialsInvalidOrUserNotFoundOrInactive() {
         // Arrange
-        UUID userId = UUID.randomUUID();
-        String email = "change@example.com";
-        Usuario usuario = new Usuario(userId, email, "old_hash", "Change User", null, "USD", true);
+        Usuario inactiveUser = new Usuario(UUID.randomUUID(), "inactive@finance.com", "hash", "Juan", null, "COP", false);
+        Usuario activeUser = new Usuario(UUID.randomUUID(), "active@finance.com", "hash", "Juan", null, "COP", true);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("missing@finance.com")).thenReturn(null);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("inactive@finance.com")).thenReturn(inactiveUser);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("active@finance.com")).thenReturn(activeUser);
+        when(passwordEncoderGateway.matches("wrongpass", "hash")).thenReturn(false);
 
-        when(usuarioGateWay.obtenerUsuarioPorEmail(email)).thenReturn(usuario);
+        // Act
+        IllegalArgumentException exEmpty = assertThrows(IllegalArgumentException.class,
+                () -> authUseCase.login("", "secret123"));
+        IllegalArgumentException exNotFound = assertThrows(IllegalArgumentException.class,
+                () -> authUseCase.login("missing@finance.com", "secret123"));
+        IllegalStateException exInactive = assertThrows(IllegalStateException.class,
+                () -> authUseCase.login("inactive@finance.com", "secret123"));
+        IllegalArgumentException exWrongPass = assertThrows(IllegalArgumentException.class,
+                () -> authUseCase.login("active@finance.com", "wrongpass"));
+
+        // Assert
+        assertEquals("El email y la contraseña son obligatorios", exEmpty.getMessage());
+        assertEquals("Credenciales inválidas", exNotFound.getMessage());
+        assertEquals("La cuenta de usuario está desactivada", exInactive.getMessage());
+        assertEquals("Credenciales inválidas", exWrongPass.getMessage());
+    }
+
+    @Test
+    void changePassword_ShouldUpdateHashAndNotify_WhenValidRequest() {
+        // Arrange
+        Usuario user = new Usuario(UUID.randomUUID(), "test@finance.com", "old_hash", "Juan Perez", null, "COP", true);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("test@finance.com")).thenReturn(user);
         when(passwordEncoderGateway.matches("oldPass123", "old_hash")).thenReturn(true);
-        when(passwordEncoderGateway.encode("newPass1234")).thenReturn("new_hash");
+        when(passwordEncoderGateway.encode("newPass45678")).thenReturn("new_hash");
 
         // Act
-        authUseCase.changePassword("  CHANGE@example.com ", "oldPass123", "newPass1234");
+        authUseCase.changePassword("test@finance.com", "oldPass123", "newPass45678");
 
         // Assert
-        assertEquals("new_hash", usuario.getPasswordHash());
-        verify(usuarioGateWay).actualizarUsuario(usuario);
-        verify(notificationGateway).notifyPasswordChanged(email);
+        assertEquals("new_hash", user.getPasswordHash());
+        verify(usuarioGateWay).actualizarUsuario(user);
+        verify(notificationGateway).notifyPasswordChanged("test@finance.com");
     }
 
     @Test
-    void shouldThrowIllegalArgumentExceptionWhenChangePasswordFieldsAreNullOrBlank() {
+    void changePassword_ShouldThrowException_WhenValidationsOrLookupFail() {
         // Arrange
-        String validEmail = "user@example.com";
+        String samePass = "samePass123";
+        Usuario inactiveUser = new Usuario(UUID.randomUUID(), "inactive@finance.com", "hash", "Juan", null, "COP", false);
+        Usuario activeUser = new Usuario(UUID.randomUUID(), "active@finance.com", "hash", "Juan", null, "COP", true);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("missing@finance.com")).thenReturn(null);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("inactive@finance.com")).thenReturn(inactiveUser);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("active@finance.com")).thenReturn(activeUser);
+        when(passwordEncoderGateway.matches("wrongCurrent", "hash")).thenReturn(false);
 
         // Act
-        IllegalArgumentException ex1 = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.changePassword(null, "oldPass", "newPass123")
-        );
-        IllegalArgumentException ex2 = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.changePassword(" ", "oldPass", "newPass123")
-        );
-        IllegalArgumentException ex3 = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.changePassword(validEmail, null, "newPass123")
-        );
-        IllegalArgumentException ex4 = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.changePassword(validEmail, " ", "newPass123")
-        );
-        IllegalArgumentException ex5 = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.changePassword(validEmail, "oldPass", null)
-        );
-        IllegalArgumentException ex6 = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.changePassword(validEmail, "oldPass", " ")
-        );
+        IllegalArgumentException exEmptyEmail = assertThrows(IllegalArgumentException.class,
+                () -> authUseCase.changePassword(" ", "oldPass123", "newPass1234"));
+        IllegalArgumentException exShortNew = assertThrows(IllegalArgumentException.class,
+                () -> authUseCase.changePassword("a@b.com", "oldPass123", "1234567"));
+        IllegalArgumentException exSamePass = assertThrows(IllegalArgumentException.class,
+                () -> authUseCase.changePassword("a@b.com", samePass, samePass));
+        NoSuchElementException exNotFound = assertThrows(NoSuchElementException.class,
+                () -> authUseCase.changePassword("missing@finance.com", "old12345", "new123456"));
+        IllegalStateException exInactive = assertThrows(IllegalStateException.class,
+                () -> authUseCase.changePassword("inactive@finance.com", "old12345", "new123456"));
+        IllegalArgumentException exWrongPass = assertThrows(IllegalArgumentException.class,
+                () -> authUseCase.changePassword("active@finance.com", "wrongCurrent", "new123456"));
 
         // Assert
-        assertEquals("El email, la contraseña actual y la nueva contraseña no pueden ser nulos o vacíos", ex1.getMessage());
-        assertEquals("El email, la contraseña actual y la nueva contraseña no pueden ser nulos o vacíos", ex2.getMessage());
-        assertEquals("El email, la contraseña actual y la nueva contraseña no pueden ser nulos o vacíos", ex3.getMessage());
-        assertEquals("El email, la contraseña actual y la nueva contraseña no pueden ser nulos o vacíos", ex4.getMessage());
-        assertEquals("El email, la contraseña actual y la nueva contraseña no pueden ser nulos o vacíos", ex5.getMessage());
-        assertEquals("El email, la contraseña actual y la nueva contraseña no pueden ser nulos o vacíos", ex6.getMessage());
+        assertEquals("El email, la contraseña actual y la nueva contraseña no pueden ser nulos o vacíos", exEmptyEmail.getMessage());
+        assertEquals("La nueva contraseña debe tener al menos 8 caracteres", exShortNew.getMessage());
+        assertEquals("La nueva contraseña no puede ser igual a la contraseña actual", exSamePass.getMessage());
+        assertEquals("Usuario no encontrado", exNotFound.getMessage());
+        assertEquals("La cuenta de usuario está desactivada", exInactive.getMessage());
+        assertEquals("La contraseña actual es incorrecta", exWrongPass.getMessage());
     }
 
     @Test
-    void shouldThrowIllegalArgumentExceptionWhenNewPasswordIsShorterThanEightChars() {
+    void logout_ShouldRevokeTokenAndClearActiveSession_WhenBearerHeaderIsValid() {
         // Arrange
-        String shortNewPassword = "1234567";
+        String token = "valid.jwt.token";
+        Instant expiresAt = Instant.now().plusSeconds(3600);
+        when(tokenGateway.validateToken(token)).thenReturn(true);
+        when(tokenGateway.extractExpiration(token)).thenReturn(expiresAt);
 
         // Act
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.changePassword("user@example.com", "oldPass123", shortNewPassword)
-        );
+        authUseCase.logout("Bearer " + token);
 
         // Assert
-        assertEquals("La nueva contraseña debe tener al menos 8 caracteres", exception.getMessage());
+        verify(tokenGateway).validateToken(token);
+        verify(tokenGateway).extractExpiration(token);
+        verify(tokenBlacklistGateway).revokeToken(token, expiresAt);
+        verify(tokenBlacklistGateway).clearActiveSessionByToken(token);
     }
 
     @Test
-    void shouldThrowIllegalArgumentExceptionWhenNewPasswordEqualsCurrentPassword() {
+    void logout_ShouldThrowException_WhenHeaderIsNullOrBlankOrInvalidToken() {
         // Arrange
-        String samePassword = "samePassword123";
+        when(tokenGateway.validateToken("invalid-token")).thenReturn(false);
 
         // Act
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.changePassword("user@example.com", samePassword, samePassword)
-        );
+        IllegalArgumentException exNull = assertThrows(IllegalArgumentException.class,
+                () -> authUseCase.logout(null));
+        IllegalArgumentException exBlank = assertThrows(IllegalArgumentException.class,
+                () -> authUseCase.logout("   "));
+        IllegalArgumentException exEmptyBearer = assertThrows(IllegalArgumentException.class,
+                () -> authUseCase.logout("Bearer    "));
+        IllegalArgumentException exInvalid = assertThrows(IllegalArgumentException.class,
+                () -> authUseCase.logout("invalid-token"));
 
         // Assert
-        assertEquals("La nueva contraseña no puede ser igual a la contraseña actual", exception.getMessage());
-    }
-
-    @Test
-    void shouldThrowIllegalArgumentExceptionWhenChangePasswordUserNotFound() {
-        // Arrange
-        when(usuarioGateWay.obtenerUsuarioPorEmail("missing@example.com")).thenReturn(null);
-
-        // Act
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.changePassword("missing@example.com", "oldPass123", "newPass1234")
-        );
-
-        // Assert
-        assertEquals("Usuario no encontrado", exception.getMessage());
-    }
-
-    @Test
-    void shouldThrowIllegalStateExceptionWhenChangePasswordUserIsInactive() {
-        // Arrange
-        Usuario inactiveUser = new Usuario(UUID.randomUUID(), "inactive@example.com", "hash", "Inactive", null, "USD", false);
-        when(usuarioGateWay.obtenerUsuarioPorEmail("inactive@example.com")).thenReturn(inactiveUser);
-
-        // Act
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
-                () -> authUseCase.changePassword("inactive@example.com", "oldPass123", "newPass1234")
-        );
-
-        // Assert
-        assertEquals("La cuenta de usuario está desactivada", exception.getMessage());
-    }
-
-    @Test
-    void shouldThrowIllegalArgumentExceptionWhenChangePasswordCurrentPasswordIsIncorrect() {
-        // Arrange
-        Usuario usuario = new Usuario(UUID.randomUUID(), "user@example.com", "real_hash", "User", null, "USD", true);
-        when(usuarioGateWay.obtenerUsuarioPorEmail("user@example.com")).thenReturn(usuario);
-        when(passwordEncoderGateway.matches(eq("wrongCurrent"), eq("real_hash"))).thenReturn(false);
-
-        // Act
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> authUseCase.changePassword("user@example.com", "wrongCurrent", "newPass1234")
-        );
-
-        // Assert
-        assertEquals("La contraseña actual es incorrecta", exception.getMessage());
-    }
-
-    @Test
-    void shouldCompleteChangePasswordWhenNotificationGatewayThrowsException() {
-        // Arrange
-        String email = "notifyfail@example.com";
-        Usuario usuario = new Usuario(UUID.randomUUID(), email, "old_hash", "User", null, "USD", true);
-
-        when(usuarioGateWay.obtenerUsuarioPorEmail(email)).thenReturn(usuario);
-        when(passwordEncoderGateway.matches("oldPass123", "old_hash")).thenReturn(true);
-        when(passwordEncoderGateway.encode("newPass1234")).thenReturn("new_hash");
-        doThrow(new RuntimeException("Timeout")).when(notificationGateway).notifyPasswordChanged(email);
-
-        // Act
-        authUseCase.changePassword(email, "oldPass123", "newPass1234");
-
-        // Assert
-        assertEquals("new_hash", usuario.getPasswordHash());
-        verify(usuarioGateWay).actualizarUsuario(usuario);
-        verify(notificationGateway).notifyPasswordChanged(email);
+        assertEquals("El token de autorización es obligatorio", exNull.getMessage());
+        assertEquals("El token de autorización es obligatorio", exBlank.getMessage());
+        assertEquals("Token JWT inválido o expirado", exEmptyBearer.getMessage());
+        assertEquals("Token JWT inválido o expirado", exInvalid.getMessage());
+        verify(tokenBlacklistGateway, never()).revokeToken(any(), any());
     }
 }

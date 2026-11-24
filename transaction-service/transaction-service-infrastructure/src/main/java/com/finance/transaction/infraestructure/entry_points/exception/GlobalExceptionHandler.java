@@ -2,12 +2,16 @@ package com.finance.transaction.infraestructure.entry_points.exception;
 
 import com.finance.transaction.infraestructure.entry_points.dto.ErrorResponseDTO;
 import feign.FeignException;
+import feign.RetryableException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.core.task.TaskRejectedException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -17,6 +21,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 import java.time.Instant;
 import java.util.NoSuchElementException;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
@@ -28,6 +33,22 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(SecurityException.class)
+    public ResponseEntity<ErrorResponseDTO> handleSecurityException(
+            SecurityException ex,
+            HttpServletRequest request
+    ) {
+        return buildErrorResponse(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponseDTO> handleAccessDeniedException(
+            AccessDeniedException ex,
+            HttpServletRequest request
+    ) {
+        return buildErrorResponse(HttpStatus.FORBIDDEN, ex.getMessage(), request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -107,6 +128,42 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponseDTO> handleDataIntegrityViolationException(
+            DataIntegrityViolationException ex,
+            HttpServletRequest request
+    ) {
+        return buildErrorResponse(
+                HttpStatus.CONFLICT,
+                "Conflicto de integridad de datos en la base de datos",
+                request
+        );
+    }
+
+    @ExceptionHandler({TimeoutException.class, RetryableException.class})
+    public ResponseEntity<ErrorResponseDTO> handleTimeoutException(
+            Exception ex,
+            HttpServletRequest request
+    ) {
+        return buildErrorResponse(
+                HttpStatus.GATEWAY_TIMEOUT,
+                "Tiempo de espera agotado al comunicarse con un servicio externo",
+                request
+        );
+    }
+
+    @ExceptionHandler(TaskRejectedException.class)
+    public ResponseEntity<ErrorResponseDTO> handleTaskRejectedException(
+            TaskRejectedException ex,
+            HttpServletRequest request
+    ) {
+        return buildErrorResponse(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "El servidor está saturado temporalmente, intente nuevamente",
+                request
+        );
     }
 
     @ExceptionHandler(FeignException.NotFound.class)

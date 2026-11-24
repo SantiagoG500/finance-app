@@ -5,9 +5,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Instant;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(MockitoExtension.class)
 class JwtTokenAdapterTest {
@@ -22,23 +27,27 @@ class JwtTokenAdapterTest {
     }
 
     @Test
-    void shouldGenerateAndValidateTokenAndExtractClaimsSuccessfully() {
+    void shouldGenerateUniqueTokensWithJtiAndValidateAndExtractClaimsAndExpiration() {
         // Arrange
         UUID userId = UUID.randomUUID();
         String email = "jwt@example.com";
         String fullName = "Jwt User";
 
         // Act
-        String token = jwtTokenAdapter.generateToken(userId, email, fullName);
-        boolean isValid = jwtTokenAdapter.validateToken(token);
-        UUID extractedUserId = jwtTokenAdapter.extractUserId(token);
-        String extractedEmail = jwtTokenAdapter.extractEmail(token);
+        String token1 = jwtTokenAdapter.generateToken(userId, email, fullName);
+        String token2 = jwtTokenAdapter.generateToken(userId, email, fullName);
+        boolean isValid = jwtTokenAdapter.validateToken(token1);
+        UUID extractedUserId = jwtTokenAdapter.extractUserId(token1);
+        String extractedEmail = jwtTokenAdapter.extractEmail(token1);
+        Instant expiration = jwtTokenAdapter.extractExpiration(token1);
 
         // Assert
-        assertNotNull(token);
+        assertNotNull(token1);
+        assertNotEquals(token1, token2);
         assertTrue(isValid);
         assertEquals(userId, extractedUserId);
         assertEquals(email, extractedEmail);
+        assertTrue(expiration.isAfter(Instant.now()));
     }
 
     @Test

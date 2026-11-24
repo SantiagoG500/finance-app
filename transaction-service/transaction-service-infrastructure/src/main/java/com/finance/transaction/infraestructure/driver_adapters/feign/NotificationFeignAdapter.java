@@ -3,6 +3,7 @@ package com.finance.transaction.infraestructure.driver_adapters.feign;
 import com.finance.transaction.domain.model.gateway.NotificationGateway;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -14,6 +15,7 @@ public class NotificationFeignAdapter implements NotificationGateway {
 
     private final NotificationFeignClient notificationFeignClient;
 
+    @Async("notificationAsyncExecutor")
     @Override
     public void notifyTransactionCreated(
             String email,
@@ -36,6 +38,7 @@ public class NotificationFeignAdapter implements NotificationGateway {
         }
     }
 
+    @Async("notificationAsyncExecutor")
     @Override
     public void notifySavingsGoalAchieved(
             String email,
@@ -58,6 +61,7 @@ public class NotificationFeignAdapter implements NotificationGateway {
         }
     }
 
+    @Async("notificationAsyncExecutor")
     @Override
     public void notifyProjectionDeficit(
             String email,

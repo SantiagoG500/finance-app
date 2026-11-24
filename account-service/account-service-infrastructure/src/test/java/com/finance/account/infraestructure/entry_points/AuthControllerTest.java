@@ -16,19 +16,26 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.util.Collections;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -82,16 +89,17 @@ class AuthControllerTest {
         RegisterRequestDTO invalidRequest = new RegisterRequestDTO("invalid-email", "123", "Name");
 
         // Act
+        ResultActions response = mockMvc.perform(post("/api/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(invalidRequest)));
+
         // Assert
-        mockMvc.perform(post("/api/auth/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(invalidRequest)))
-                .andExpect(status().isBadRequest())
+        response.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400));
     }
 
     @Test
-    void shouldLoginAndReturn200OkWhenCredentialsAreValid() {
+    void shouldLoginAndReturn200OkWithAuthorizationHeaderAndMessageBodyWhenCredentialsAreValid() {
         // Arrange
         UUID userId = UUID.randomUUID();
         LoginRequestDTO request = new LoginRequestDTO("login@example.com", "password123");
@@ -101,13 +109,13 @@ class AuthControllerTest {
         when(authUseCase.login("login@example.com", "password123")).thenReturn(authResult);
 
         // Act
-        ResponseEntity<AuthResponseDTO> response = authController.login(request);
+        ResponseEntity<MessageResponseDTO> response = authController.login(request);
 
         // Assert
         assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("Bearer jwt-login", response.getHeaders().getFirst(HttpHeaders.AUTHORIZATION));
         assertNotNull(response.getBody());
-        assertEquals("jwt-login", response.getBody().getToken());
-        assertEquals("login@example.com", response.getBody().getEmail());
+        assertEquals("Se ha iniciado sesión correctamente", response.getBody().getMessage());
     }
 
     @Test
@@ -118,44 +126,47 @@ class AuthControllerTest {
                 .thenThrow(new IllegalArgumentException("Credenciales inválidas"));
 
         // Act
+        ResultActions response = mockMvc.perform(post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)));
+
         // Assert
-        mockMvc.perform(post("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest())
+        response.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.message").value("Credenciales inválidas"));
     }
 
     @Test
-    void shouldReturn409ConflictWhenLoginAccountIsInactive() throws Exception {
+    void shouldLogoutAndReturn200Ok() throws Exception {
         // Arrange
-        LoginRequestDTO request = new LoginRequestDTO("inactive@example.com", "password123");
-        when(authUseCase.login("inactive@example.com", "password123"))
-                .thenThrow(new IllegalStateException("La cuenta de usuario está desactivada"));
+        String header = "Bearer jwt-token-123";
+        doNothing().when(authUseCase).logout(header);
 
         // Act
+        ResultActions response = mockMvc.perform(post("/api/auth/logout")
+                .header("Authorization", header));
+
         // Assert
-        mockMvc.perform(post("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.status").value(409))
-                .andExpect(jsonPath("$.message").value("La cuenta de usuario está desactivada"));
+        response.andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Sesión cerrada exitosamente"));
+        verify(authUseCase).logout(header);
     }
 
     @Test
-    void shouldChangePasswordAndReturn200OkWithMessageResponseDTO() {
+    void shouldChangePasswordWithPatchAndReturn200OkWhenAuthenticatedOwner() {
         // Arrange
         ChangePasswordRequestDTO request = new ChangePasswordRequestDTO(
                 "user@example.com",
                 "oldPass123",
                 "newPass1234"
         );
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                "user@example.com", null, Collections.emptyList()
+        );
         doNothing().when(authUseCase).changePassword("user@example.com", "oldPass123", "newPass1234");
 
         // Act
-        ResponseEntity<MessageResponseDTO> response = authController.changePassword(request);
+        ResponseEntity<MessageResponseDTO> response = authController.changePassword(request, auth);
 
         // Assert
         assertEquals(HttpStatus.OK, response.getStatusCode());
@@ -165,21 +176,27 @@ class AuthControllerTest {
     }
 
     @Test
-    void shouldReturn400BadRequestWhenChangePasswordValidationFails() throws Exception {
+    void shouldReturn403ForbiddenWhenChangePasswordEmailDoesNotMatchAuthenticatedUser() throws Exception {
         // Arrange
-        ChangePasswordRequestDTO invalidRequest = new ChangePasswordRequestDTO(
-                "user@example.com",
-                "oldPass",
-                "short"
+        ChangePasswordRequestDTO request = new ChangePasswordRequestDTO(
+                "victim@example.com",
+                "oldPass123",
+                "newPass1234"
+        );
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                "attacker@example.com", null, Collections.emptyList()
         );
 
         // Act
+        ResultActions response = mockMvc.perform(patch("/api/auth/password")
+                .principal(auth)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)));
+
         // Assert
-        mockMvc.perform(put("/api/auth/password")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(invalidRequest)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400));
+        response.andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.message").value("No tiene permisos para modificar esta cuenta"));
     }
 
     @Test
@@ -190,16 +207,21 @@ class AuthControllerTest {
                 "oldPass123",
                 "newPass1234"
         );
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                "inactive@example.com", null, Collections.emptyList()
+        );
         doThrow(new IllegalStateException("La cuenta de usuario está desactivada"))
                 .when(authUseCase)
                 .changePassword("inactive@example.com", "oldPass123", "newPass1234");
 
         // Act
+        ResultActions response = mockMvc.perform(patch("/api/auth/password")
+                .principal(auth)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)));
+
         // Assert
-        mockMvc.perform(put("/api/auth/password")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isConflict())
+        response.andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409))
                 .andExpect(jsonPath("$.message").value("La cuenta de usuario está desactivada"));
     }

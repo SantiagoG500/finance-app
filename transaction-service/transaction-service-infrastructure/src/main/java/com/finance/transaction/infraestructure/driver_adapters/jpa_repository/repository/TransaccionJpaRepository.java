@@ -10,5 +10,5 @@ import java.util.UUID;
 public interface TransaccionJpaRepository extends JpaRepository<TransaccionEntity, UUID> {
     List<TransaccionEntity> findByUserId(UUID userId);
     Optional<TransaccionEntity> findByIdAndUserId(UUID id, UUID userId);
-    void deleteByIdAndUserId(UUID id, UUID userId);
+    boolean existsByCategoryIdAndUserId(UUID categoryId, UUID userId);
 }

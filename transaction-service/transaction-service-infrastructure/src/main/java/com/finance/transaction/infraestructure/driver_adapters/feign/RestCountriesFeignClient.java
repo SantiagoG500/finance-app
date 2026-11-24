@@ -1,20 +1,18 @@
 package com.finance.transaction.infraestructure.driver_adapters.feign;
 
-import com.finance.transaction.infraestructure.driver_adapters.feign.dto.RestCountryResponseDTO;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
-
-import java.util.List;
 
 @FeignClient(name = "restcountries-api", url = "${services.restcountries.url}")
 public interface RestCountriesFeignClient {
 
-    @GetMapping("/currency/{currency}")
-    List<RestCountryResponseDTO> getCountriesByCurrency(
-            @PathVariable("currency") String currency,
-            @RequestParam("fields") String fields
+    @GetMapping("/countries/v5")
+    JsonNode searchCountries(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @RequestParam("q") String query
     );
 
 }

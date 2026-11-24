@@ -3,10 +3,12 @@ package com.finance.transaction.infraestructure.entry_points;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.finance.transaction.domain.model.MetaAhorro;
+import com.finance.transaction.domain.model.PaginatedMetaAhorro;
 import com.finance.transaction.domain.usecase.MetaAhorrosUseCase;
 import com.finance.transaction.infraestructure.entry_points.dto.AbonoMetaRequestDTO;
-import com.finance.transaction.infraestructure.entry_points.dto.MetaAhorroRequestDTO;
+import com.finance.transaction.infraestructure.entry_points.dto.CreateMetaAhorroRequestDTO;
 import com.finance.transaction.infraestructure.entry_points.dto.MetaAhorroResponseDTO;
+import com.finance.transaction.infraestructure.entry_points.dto.UpdateMetaAhorroRequestDTO;
 import com.finance.transaction.infraestructure.entry_points.exception.GlobalExceptionHandler;
 import com.finance.transaction.infraestructure.mapper.MetaAhorrosMapper;
 import jakarta.validation.ConstraintViolation;
@@ -26,6 +28,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.math.BigDecimal;
@@ -39,8 +42,15 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -92,7 +102,7 @@ class AhorrosControllerTest {
     void shouldSaveGoalAndReturn201CreatedWhenRequestIsValid() {
         // Arrange
         String goalId = UUID.randomUUID().toString();
-        MetaAhorroRequestDTO request = new MetaAhorroRequestDTO(
+        CreateMetaAhorroRequestDTO request = new CreateMetaAhorroRequestDTO(
                 "Viaje",
                 new BigDecimal("2000.00"),
                 new BigDecimal("200.00"),
@@ -104,11 +114,15 @@ class AhorrosControllerTest {
         MetaAhorroResponseDTO responseDto = buildResponseDto(goalId);
 
         when(metaAhorrosMapper.requestDtoToMetaAhorro(request, userId)).thenReturn(domain);
-        when(metaAhorrosUseCase.guardarMetaAhorros(domain)).thenReturn(domain);
+        when(metaAhorrosUseCase.guardarMetaAhorros(domain, "Bearer mock-jwt-token")).thenReturn(domain);
         when(metaAhorrosMapper.metaAhorroToResponseDto(domain)).thenReturn(responseDto);
 
         // Act
-        ResponseEntity<MetaAhorroResponseDTO> response = ahorrosController.guardarMetaAhorro(request, validJwt);
+        ResponseEntity<MetaAhorroResponseDTO> response = ahorrosController.guardarMetaAhorro(
+                request,
+                validJwt,
+                "Bearer mock-jwt-token"
+        );
 
         // Assert
         assertEquals(HttpStatus.CREATED, response.getStatusCode());
@@ -119,14 +133,15 @@ class AhorrosControllerTest {
     @Test
     void shouldReturn400BadRequestWhenSaveGoalValidationFails() throws Exception {
         // Arrange
-        String invalidJson = "{\"title\":\"\",\"targetAmount\":-10,\"currentAmount\":-1,\"monthlyContribution\":0,\"currency\":\"\",\"targetDate\":\"2020-01-01\"}";
+        String invalidJson = "{\"title\":\"\",\"targetAmount\":-10,\"currentAmount\":-1,\"monthlyContribution\":0,\"currency\":\"INVALID\",\"targetDate\":\"2020-01-01\"}";
 
         // Act
+        ResultActions response = mockMvc.perform(post("/api/v1/finances/goals/save")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(invalidJson));
+
         // Assert
-        mockMvc.perform(post("/api/v1/finances/goals/save")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(invalidJson))
-                .andExpect(status().isBadRequest())
+        response.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400));
     }
 
@@ -137,13 +152,14 @@ class AhorrosControllerTest {
         MetaAhorro domain = buildDomain(goalId);
         MetaAhorroResponseDTO responseDto = buildResponseDto(goalId);
 
-        when(metaAhorrosUseCase.obtenerMetaAhorros(goalId, userId)).thenReturn(domain);
+        when(metaAhorrosUseCase.obtenerMetaAhorros(eq(goalId), eq(userId), any())).thenReturn(domain);
         when(metaAhorrosMapper.metaAhorroToResponseDto(domain)).thenReturn(responseDto);
 
         // Act
+        ResultActions response = mockMvc.perform(get("/api/v1/finances/goals/get/{id}", goalId));
+
         // Assert
-        mockMvc.perform(get("/api/v1/finances/goals/get/{id}", goalId))
-                .andExpect(status().isOk())
+        response.andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(goalId))
                 .andExpect(jsonPath("$.title").value("Viaje"));
     }
@@ -152,38 +168,46 @@ class AhorrosControllerTest {
     void shouldReturn404NotFoundWhenGoalByIdDoesNotExist() throws Exception {
         // Arrange
         String goalId = UUID.randomUUID().toString();
-        when(metaAhorrosUseCase.obtenerMetaAhorros(goalId, userId)).thenReturn(null);
+        when(metaAhorrosUseCase.obtenerMetaAhorros(eq(goalId), eq(userId), any())).thenReturn(null);
 
         // Act
+        ResultActions response = mockMvc.perform(get("/api/v1/finances/goals/get/{id}", goalId));
+
         // Assert
-        mockMvc.perform(get("/api/v1/finances/goals/get/{id}", goalId))
-                .andExpect(status().isNotFound())
+        response.andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.message").value("Meta de ahorro no encontrada"));
     }
 
     @Test
-    void shouldGetGoalsByUserAndReturn200Ok() throws Exception {
+    void shouldGetPaginatedGoalsByUserAndReturn200Ok() throws Exception {
         // Arrange
         String goalId = UUID.randomUUID().toString();
         MetaAhorro domain = buildDomain(goalId);
-        MetaAhorroResponseDTO responseDto = buildResponseDto(goalId);
+        PaginatedMetaAhorro paginated = new PaginatedMetaAhorro(List.of(domain), 0, 10, 1L, 1, true);
 
-        when(metaAhorrosUseCase.obtenerMetasPorUsuario(userId)).thenReturn(List.of(domain));
-        when(metaAhorrosMapper.metaAhorroToResponseDto(domain)).thenReturn(responseDto);
+        when(metaAhorrosUseCase.obtenerMetasPaginadas(eq(userId), any(), eq(0), eq(10))).thenReturn(paginated);
 
         // Act
+        ResultActions response = mockMvc.perform(get("/api/v1/finances/goals")
+                .param("page", "0")
+                .param("size", "10"));
+
         // Assert
-        mockMvc.perform(get("/api/v1/finances/goals"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(goalId));
+        response.andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value(goalId))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(10))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1))
+                .andExpect(jsonPath("$.last").value(true));
     }
 
     @Test
     void shouldUpdateGoalAndReturn200OkWhenRequestIsValid() {
         // Arrange
         String goalId = UUID.randomUUID().toString();
-        MetaAhorroRequestDTO request = new MetaAhorroRequestDTO(
+        UpdateMetaAhorroRequestDTO request = new UpdateMetaAhorroRequestDTO(
                 "Viaje Europa",
                 new BigDecimal("3000.00"),
                 new BigDecimal("500.00"),
@@ -195,11 +219,16 @@ class AhorrosControllerTest {
         MetaAhorroResponseDTO responseDto = buildResponseDto(goalId);
 
         when(metaAhorrosMapper.requestDtoToMetaAhorro(goalId, request, userId)).thenReturn(domain);
-        when(metaAhorrosUseCase.actualizarMetaAhorros(domain)).thenReturn(domain);
+        when(metaAhorrosUseCase.actualizarMetaAhorros(domain, "Bearer mock-jwt-token")).thenReturn(domain);
         when(metaAhorrosMapper.metaAhorroToResponseDto(domain)).thenReturn(responseDto);
 
         // Act
-        ResponseEntity<MetaAhorroResponseDTO> response = ahorrosController.actualizarMetaAhorro(goalId, request, validJwt);
+        ResponseEntity<MetaAhorroResponseDTO> response = ahorrosController.actualizarMetaAhorro(
+                goalId,
+                request,
+                validJwt,
+                null
+        );
 
         // Assert
         assertEquals(HttpStatus.OK, response.getStatusCode());
@@ -211,33 +240,35 @@ class AhorrosControllerTest {
     void shouldDeleteGoalAndReturn200OkWithMessageResponse() throws Exception {
         // Arrange
         String goalId = UUID.randomUUID().toString();
-        doNothing().when(metaAhorrosUseCase).eliminarMetaAhorros(goalId, userId);
+        doNothing().when(metaAhorrosUseCase).eliminarMetaAhorros(eq(goalId), eq(userId), any());
 
         // Act
+        ResultActions response = mockMvc.perform(delete("/api/v1/finances/goals/delete/{id}", goalId));
+
         // Assert
-        mockMvc.perform(delete("/api/v1/finances/goals/delete/{id}", goalId))
-                .andExpect(status().isOk())
+        response.andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("Meta de ahorro eliminada exitosamente"));
     }
 
     @Test
-    void shouldDepositToGoalAndReturn200OkWhenRequestIsValid() throws Exception {
+    void shouldDepositToGoalWithPatchAndReturn200OkWhenRequestIsValid() throws Exception {
         // Arrange
         String goalId = UUID.randomUUID().toString();
         AbonoMetaRequestDTO request = new AbonoMetaRequestDTO(new BigDecimal("250.00"));
         MetaAhorro updatedGoal = buildDomain(goalId);
         MetaAhorroResponseDTO responseDto = buildResponseDto(goalId);
 
-        when(metaAhorrosUseCase.abonarMetaAhorros(goalId, userId, new BigDecimal("250.00"), "user@finance.com"))
+        when(metaAhorrosUseCase.abonarMetaAhorros(eq(goalId), eq(userId), eq(new BigDecimal("250.00")), eq("user@finance.com"), any()))
                 .thenReturn(updatedGoal);
         when(metaAhorrosMapper.metaAhorroToResponseDto(updatedGoal)).thenReturn(responseDto);
 
         // Act
+        ResultActions response = mockMvc.perform(patch("/api/v1/finances/goals/{id}/deposit", goalId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)));
+
         // Assert
-        mockMvc.perform(put("/api/v1/finances/goals/{id}/deposit", goalId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
+        response.andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(goalId));
     }
 
@@ -248,29 +279,39 @@ class AhorrosControllerTest {
         AbonoMetaRequestDTO invalidRequest = new AbonoMetaRequestDTO(BigDecimal.ZERO);
 
         // Act
+        ResultActions response = mockMvc.perform(patch("/api/v1/finances/goals/{id}/deposit", goalId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(invalidRequest)));
+
         // Assert
-        mockMvc.perform(put("/api/v1/finances/goals/{id}/deposit", goalId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(invalidRequest)))
-                .andExpect(status().isBadRequest())
+        response.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400));
     }
 
     @Test
-    void shouldReturn404NotFoundWhenDepositingToNonExistentGoal() throws Exception {
+    void shouldReturn404Or409WhenDepositingToNonExistentOrCompletedGoal() throws Exception {
         // Arrange
-        String goalId = UUID.randomUUID().toString();
+        String missingGoalId = UUID.randomUUID().toString();
+        String completedGoalId = UUID.randomUUID().toString();
         AbonoMetaRequestDTO request = new AbonoMetaRequestDTO(new BigDecimal("100.00"));
-        when(metaAhorrosUseCase.abonarMetaAhorros(goalId, userId, new BigDecimal("100.00"), "user@finance.com"))
+        when(metaAhorrosUseCase.abonarMetaAhorros(eq(missingGoalId), eq(userId), eq(new BigDecimal("100.00")), eq("user@finance.com"), any()))
                 .thenThrow(new NoSuchElementException("Meta de ahorro no encontrada"));
+        when(metaAhorrosUseCase.abonarMetaAhorros(eq(completedGoalId), eq(userId), eq(new BigDecimal("100.00")), eq("user@finance.com"), any()))
+                .thenThrow(new IllegalStateException("La meta de ahorro ya alcanzó el 100% de su monto objetivo"));
 
         // Act
+        ResultActions notFoundRes = mockMvc.perform(patch("/api/v1/finances/goals/{id}/deposit", missingGoalId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)));
+        ResultActions conflictRes = mockMvc.perform(patch("/api/v1/finances/goals/{id}/deposit", completedGoalId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)));
+
         // Assert
-        mockMvc.perform(put("/api/v1/finances/goals/{id}/deposit", goalId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isNotFound())
+        notFoundRes.andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
+        conflictRes.andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409));
     }
 
     @Test
@@ -280,12 +321,13 @@ class AhorrosControllerTest {
         ConstraintViolation<?> violation = mock(ConstraintViolation.class);
         when(violation.getMessage()).thenReturn("ID no debe estar vacío");
         ConstraintViolationException exception = new ConstraintViolationException("Error de validación", Set.of(violation));
-        when(metaAhorrosUseCase.obtenerMetaAhorros(goalId, userId)).thenThrow(exception);
+        when(metaAhorrosUseCase.obtenerMetaAhorros(eq(goalId), eq(userId), any())).thenThrow(exception);
 
         // Act
+        ResultActions response = mockMvc.perform(get("/api/v1/finances/goals/get/{id}", goalId));
+
         // Assert
-        mockMvc.perform(get("/api/v1/finances/goals/get/{id}", goalId))
-                .andExpect(status().isBadRequest())
+        response.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.message").value("ID no debe estar vacío"));
     }
@@ -296,9 +338,10 @@ class AhorrosControllerTest {
         SecurityContextHolder.clearContext();
 
         // Act
+        ResultActions response = mockMvc.perform(get("/api/v1/finances/goals"));
+
         // Assert
-        mockMvc.perform(get("/api/v1/finances/goals"))
-                .andExpect(status().isBadRequest())
+        response.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400));
     }
 

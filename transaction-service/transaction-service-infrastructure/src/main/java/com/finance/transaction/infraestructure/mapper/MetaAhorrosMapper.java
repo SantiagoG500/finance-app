@@ -2,16 +2,16 @@ package com.finance.transaction.infraestructure.mapper;
 
 import com.finance.transaction.domain.model.MetaAhorro;
 import com.finance.transaction.infraestructure.driver_adapters.jpa_repository.entity.MetaAhorrosEntity;
+import com.finance.transaction.infraestructure.entry_points.dto.CreateMetaAhorroRequestDTO;
 import com.finance.transaction.infraestructure.entry_points.dto.MetaAhorroRequestDTO;
 import com.finance.transaction.infraestructure.entry_points.dto.MetaAhorroResponseDTO;
+import com.finance.transaction.infraestructure.entry_points.dto.UpdateMetaAhorroRequestDTO;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
 @Component
 public class MetaAhorrosMapper {
-
-    // --- Entity <-> Domain Mappings ---
 
     public MetaAhorro entityToMetaAhorro(MetaAhorrosEntity metaAhorrosEntity) {
         if (metaAhorrosEntity == null) {
@@ -47,7 +47,6 @@ public class MetaAhorrosMapper {
         );
     }
 
-    // Backwards-compatible aliases
     public MetaAhorro toMetaAhorro(MetaAhorrosEntity metaAhorrosEntity) {
         return entityToMetaAhorro(metaAhorrosEntity);
     }
@@ -56,7 +55,39 @@ public class MetaAhorrosMapper {
         return metaAhorroToEntity(metaAhorro);
     }
 
-    // --- DTO <-> Domain Mappings ---
+    public MetaAhorro requestDtoToMetaAhorro(CreateMetaAhorroRequestDTO request, String userId) {
+        if (request == null) {
+            return null;
+        }
+        return new MetaAhorro(
+                null,
+                userId,
+                request.getTitle(),
+                request.getTargetAmount(),
+                request.getCurrentAmount(),
+                request.getMonthlyContribution(),
+                request.getCurrency() != null ? request.getCurrency().trim().toUpperCase() : null,
+                request.getTargetDate(),
+                null
+        );
+    }
+
+    public MetaAhorro requestDtoToMetaAhorro(String id, UpdateMetaAhorroRequestDTO request, String userId) {
+        if (request == null) {
+            return null;
+        }
+        return new MetaAhorro(
+                id,
+                userId,
+                request.getTitle(),
+                request.getTargetAmount(),
+                request.getCurrentAmount(),
+                request.getMonthlyContribution(),
+                request.getCurrency() != null ? request.getCurrency().trim().toUpperCase() : null,
+                request.getTargetDate(),
+                null
+        );
+    }
 
     public MetaAhorro requestDtoToMetaAhorro(MetaAhorroRequestDTO request, String userId) {
         return requestDtoToMetaAhorro(null, request, userId);
@@ -73,9 +104,9 @@ public class MetaAhorrosMapper {
                 request.getTargetAmount(),
                 request.getCurrentAmount(),
                 request.getMonthlyContribution(),
-                request.getCurrency(),
+                request.getCurrency() != null ? request.getCurrency().trim().toUpperCase() : null,
                 request.getTargetDate(),
-                null // Handled by UseCase or @CreatedDate
+                null
         );
     }
 

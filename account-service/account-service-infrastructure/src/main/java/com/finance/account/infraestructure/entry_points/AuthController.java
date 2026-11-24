@@ -9,11 +9,15 @@ import com.finance.account.infraestructure.entry_points.dto.MessageResponseDTO;
 import com.finance.account.infraestructure.entry_points.dto.RegisterRequestDTO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -31,44 +35,51 @@ public class AuthController {
                 request.getPassword(),
                 request.getFullName()
         );
-
-        AuthResponseDTO response = AuthResponseDTO.builder()
-                .token(result.getToken())
-                .type("Bearer")
-                .userId(result.getUsuario().getId())
-                .email(result.getUsuario().getEmail())
-                .fullName(result.getUsuario().getFullName())
-                .build();
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED).body(toDto(result));
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponseDTO> login(@Valid @RequestBody LoginRequestDTO request) {
+    public ResponseEntity<MessageResponseDTO> login(@Valid @RequestBody LoginRequestDTO request) {
         AuthResult result = authUseCase.login(
                 request.getEmail(),
                 request.getPassword()
         );
-
-        AuthResponseDTO response = AuthResponseDTO.builder()
-                .token(result.getToken())
-                .type("Bearer")
-                .userId(result.getUsuario().getId())
-                .email(result.getUsuario().getEmail())
-                .fullName(result.getUsuario().getFullName())
-                .build();
-
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + result.getToken())
+                .body(new MessageResponseDTO("Se ha iniciado sesión correctamente"));
     }
 
-    @PutMapping("/password")
-    public ResponseEntity<MessageResponseDTO> changePassword(@Valid @RequestBody ChangePasswordRequestDTO request) {
+    @PostMapping("/logout")
+    public ResponseEntity<MessageResponseDTO> logout(
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        authUseCase.logout(authorizationHeader);
+        return ResponseEntity.ok(new MessageResponseDTO("Sesión cerrada exitosamente"));
+    }
+
+    @PatchMapping("/password")
+    public ResponseEntity<MessageResponseDTO> changePassword(
+            @Valid @RequestBody ChangePasswordRequestDTO request,
+            Authentication authentication) {
+        if (authentication == null
+                || authentication.getName() == null
+                || !authentication.getName().trim().equalsIgnoreCase(request.getEmail().trim())) {
+            throw new AccessDeniedException("No tiene permisos para modificar esta cuenta");
+        }
         authUseCase.changePassword(
                 request.getEmail(),
                 request.getCurrentPassword(),
                 request.getNewPassword()
         );
-
         return ResponseEntity.ok(new MessageResponseDTO("Contraseña actualizada correctamente"));
+    }
+
+    private AuthResponseDTO toDto(AuthResult result) {
+        return AuthResponseDTO.builder()
+                .token(result.getToken())
+                .type("Bearer")
+                .userId(result.getUsuario().getId())
+                .email(result.getUsuario().getEmail())
+                .fullName(result.getUsuario().getFullName())
+                .build();
     }
 }

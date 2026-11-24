@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @AllArgsConstructor
@@ -25,5 +26,7 @@ public class ResumenFinancieroDTO {
     private List<MetaAhorroResponseDTO> metasAhorro;
 
     private BigDecimal proyeccion1Ano;
+
+    private Map<String, BigDecimal> porCategoria;
 
 }

@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 @Data
 public class ResumenFinanciero {
@@ -16,4 +17,5 @@ public class ResumenFinanciero {
     private BigDecimal margenLibre;
     private List<MetaAhorro> metasAhorro;
     private BigDecimal proyeccion1Ano;
+    private Map<String, BigDecimal> porCategoria;
 }

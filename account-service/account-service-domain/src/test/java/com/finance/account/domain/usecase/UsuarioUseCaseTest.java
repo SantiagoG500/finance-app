@@ -1,6 +1,7 @@
 package com.finance.account.domain.usecase;
 
 import com.finance.account.domain.gateway.NotificationGateway;
+import com.finance.account.domain.gateway.PasswordEncoderGateway;
 import com.finance.account.domain.model.Usuario;
 import com.finance.account.domain.model.UsuarioGateWay;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,8 +13,17 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class UsuarioUseCaseTest {
@@ -24,147 +34,52 @@ class UsuarioUseCaseTest {
     @Mock
     private NotificationGateway notificationGateway;
 
+    @Mock
+    private PasswordEncoderGateway passwordEncoderGateway;
+
     private UsuarioUseCase usuarioUseCase;
 
     @BeforeEach
     void setUp() {
-        usuarioUseCase = new UsuarioUseCase(usuarioGateWay, notificationGateway);
+        usuarioUseCase = new UsuarioUseCase(usuarioGateWay, notificationGateway, passwordEncoderGateway);
     }
 
     @Test
-    void shouldGetUserByIdSuccessfullyWhenUserExists() {
+    void guardarUsuario_ShouldSaveAndReturnUser_WhenEmailIsValid() {
+        // Arrange
+        Usuario user = new Usuario(UUID.randomUUID(), "juan@finance.com", "hash", "Juan Perez", null, "COP", true);
+        when(usuarioGateWay.guardarUsuario(user)).thenReturn(user);
+
+        // Act
+        Usuario result = usuarioUseCase.guardarUsuario(user);
+
+        // Assert
+        assertNotNull(result);
+        assertEquals("juan@finance.com", result.getEmail());
+        verify(usuarioGateWay).guardarUsuario(user);
+    }
+
+    @Test
+    void guardarUsuario_ShouldThrowException_WhenUserIsNullOrEmailIsEmpty() {
+        // Arrange
+        Usuario userWithoutEmail = new Usuario(UUID.randomUUID(), "  ", "hash", "Juan Perez", null, "COP", true);
+
+        // Act
+        NoSuchElementException exNull = assertThrows(NoSuchElementException.class,
+                () -> usuarioUseCase.guardarUsuario(null));
+        IllegalArgumentException exEmptyEmail = assertThrows(IllegalArgumentException.class,
+                () -> usuarioUseCase.guardarUsuario(userWithoutEmail));
+
+        // Assert
+        assertEquals("Usuario no puede ser null", exNull.getMessage());
+        assertEquals("Email no puede ser nulo o vacío.", exEmptyEmail.getMessage());
+    }
+
+    @Test
+    void eliminarUsuarioPorId_ShouldDelete_WhenUserExists() {
         // Arrange
         UUID id = UUID.randomUUID();
-        Usuario expected = new Usuario(id, "user@example.com", "hash", "User", null, "USD", true);
-        when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(expected);
-
-        // Act
-        Usuario actual = usuarioUseCase.obtenerUsuarioPorId(id);
-
-        // Assert
-        assertNotNull(actual);
-        assertEquals(id, actual.getId());
-        assertEquals("user@example.com", actual.getEmail());
-    }
-
-    @Test
-    void shouldThrowNoSuchElementExceptionWhenGetUserByIdReturnsNull() {
-        // Arrange
-        UUID id = UUID.randomUUID();
-        when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(null);
-
-        // Act
-        NoSuchElementException exception = assertThrows(
-                NoSuchElementException.class,
-                () -> usuarioUseCase.obtenerUsuarioPorId(id)
-        );
-
-        // Assert
-        assertEquals("Usuario no puede ser null", exception.getMessage());
-    }
-
-    @Test
-    void shouldGetUserByEmailSuccessfullyWhenUserExists() {
-        // Arrange
-        String email = "juan@example.com";
-        Usuario expected = new Usuario(UUID.randomUUID(), email, "hash", "Juan", null, "USD", true);
-        when(usuarioGateWay.obtenerUsuarioPorEmail(email)).thenReturn(expected);
-
-        // Act
-        Usuario actual = usuarioUseCase.obtenerUsuarioPorEmail(email);
-
-        // Assert
-        assertNotNull(actual);
-        assertEquals(email, actual.getEmail());
-    }
-
-    @Test
-    void shouldThrowNoSuchElementExceptionWhenGetUserByEmailReturnsNull() {
-        // Arrange
-        String email = "missing@example.com";
-        when(usuarioGateWay.obtenerUsuarioPorEmail(email)).thenReturn(null);
-
-        // Act
-        NoSuchElementException exception = assertThrows(
-                NoSuchElementException.class,
-                () -> usuarioUseCase.obtenerUsuarioPorEmail(email)
-        );
-
-        // Assert
-        assertEquals("Usuario no puede ser null", exception.getMessage());
-    }
-
-    @Test
-    void shouldSaveUserSuccessfullyWhenValid() {
-        // Arrange
-        Usuario input = new Usuario(UUID.randomUUID(), "save@example.com", "hash", "Save User", null, "USD", true);
-        when(usuarioGateWay.guardarUsuario(input)).thenReturn(input);
-
-        // Act
-        Usuario saved = usuarioUseCase.guardarUsuario(input);
-
-        // Assert
-        assertNotNull(saved);
-        assertEquals("save@example.com", saved.getEmail());
-        verify(usuarioGateWay).guardarUsuario(input);
-    }
-
-    @Test
-    void shouldThrowNoSuchElementExceptionWhenSavingNullUser() {
-        // Arrange
-        Usuario nullUser = null;
-
-        // Act
-        NoSuchElementException exception = assertThrows(
-                NoSuchElementException.class,
-                () -> usuarioUseCase.guardarUsuario(nullUser)
-        );
-
-        // Assert
-        assertEquals("Usuario no puede ser null", exception.getMessage());
-    }
-
-    @Test
-    void shouldThrowIllegalArgumentExceptionWhenSavingUserWithNullOrBlankEmail() {
-        // Arrange
-        Usuario userNullEmail = new Usuario(UUID.randomUUID(), null, "hash", "User", null, "USD", true);
-        Usuario userBlankEmail = new Usuario(UUID.randomUUID(), "   ", "hash", "User", null, "USD", true);
-
-        // Act
-        IllegalArgumentException ex1 = assertThrows(
-                IllegalArgumentException.class,
-                () -> usuarioUseCase.guardarUsuario(userNullEmail)
-        );
-        IllegalArgumentException ex2 = assertThrows(
-                IllegalArgumentException.class,
-                () -> usuarioUseCase.guardarUsuario(userBlankEmail)
-        );
-
-        // Assert
-        assertEquals("Email no puede ser nulo o vacío.", ex1.getMessage());
-        assertEquals("Email no puede ser nulo o vacío.", ex2.getMessage());
-    }
-
-    @Test
-    void shouldUpdateUserSuccessfullyWhenValid() {
-        // Arrange
-        Usuario input = new Usuario(UUID.randomUUID(), "update@example.com", "hash", "Updated User", null, "USD", true);
-        when(usuarioGateWay.actualizarUsuario(input)).thenReturn(input);
-
-        // Act
-        Usuario updated = usuarioUseCase.actualizarUsuario(input);
-
-        // Assert
-        assertNotNull(updated);
-        assertEquals("Updated User", updated.getFullName());
-        verify(usuarioGateWay).actualizarUsuario(input);
-    }
-
-    @Test
-    void shouldDeleteUserByIdSuccessfullyWhenUserExists() {
-        // Arrange
-        UUID id = UUID.randomUUID();
-        Usuario existing = new Usuario(id, "delete@example.com", "hash", "Delete User", null, "USD", true);
+        Usuario existing = new Usuario(id, "juan@finance.com", "hash", "Juan", null, "COP", true);
         when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(existing);
 
         // Act
@@ -175,216 +90,214 @@ class UsuarioUseCaseTest {
     }
 
     @Test
-    void shouldThrowNoSuchElementExceptionWhenDeletingNonExistentUser() {
+    void eliminarUsuarioPorId_ShouldThrowNoSuchElementException_WhenUserNotFound() {
         // Arrange
-        UUID id = UUID.randomUUID();
-        when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(null);
+        UUID missingId = UUID.randomUUID();
+        when(usuarioGateWay.obtenerUsuarioPorId(missingId)).thenReturn(null);
 
         // Act
-        NoSuchElementException exception = assertThrows(
-                NoSuchElementException.class,
-                () -> usuarioUseCase.eliminarUsuarioPorId(id)
-        );
+        NoSuchElementException exception = assertThrows(NoSuchElementException.class,
+                () -> usuarioUseCase.eliminarUsuarioPorId(missingId));
 
         // Assert
         assertEquals("Usuario no puede ser null", exception.getMessage());
-        verify(usuarioGateWay, never()).eliminarUsuarioPorId(id);
+        verify(usuarioGateWay, never()).eliminarUsuarioPorId(missingId);
     }
 
     @Test
-    void shouldDeactivateAccountAndNotifySuccessfully() {
+    void obtenerUsuarioPorIdAndEmail_ShouldReturnUser_WhenFound() {
+        // Arrange
+        UsuarioUseCase singleArgUseCase = new UsuarioUseCase(usuarioGateWay);
+        UsuarioUseCase twoArgUseCase = new UsuarioUseCase(usuarioGateWay, notificationGateway);
+        UUID id = UUID.randomUUID();
+        Usuario existing = new Usuario(id, "juan@finance.com", "hash", "Juan", null, "COP", true);
+        when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(existing);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("juan@finance.com")).thenReturn(existing);
+
+        // Act
+        Usuario byId = singleArgUseCase.obtenerUsuarioPorId(id);
+        Usuario byEmail = twoArgUseCase.obtenerUsuarioPorEmail("juan@finance.com");
+
+        // Assert
+        assertEquals(id, byId.getId());
+        assertEquals("juan@finance.com", byEmail.getEmail());
+    }
+
+    @Test
+    void actualizarUsuario_ShouldUpdateAllFieldsAndEncodePassword_WhenFullInputIsValid() {
+        // Arrange
+        UUID id = UUID.randomUUID();
+        Usuario existing = new Usuario(id, "old@finance.com", "old_hash", "Old Name", "https://old.png", "COP", true);
+        when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(existing);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("new@finance.com")).thenReturn(null);
+        when(passwordEncoderGateway.encode("newSecret123")).thenReturn("encoded_new_secret");
+        when(usuarioGateWay.actualizarUsuario(any(Usuario.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Act
+        Usuario result = usuarioUseCase.actualizarUsuario(
+                id,
+                " NEW@finance.com ",
+                "newSecret123",
+                " New Name ",
+                " https://new.png ",
+                "usd",
+                false
+        );
+
+        // Assert
+        assertEquals("new@finance.com", result.getEmail());
+        assertEquals("encoded_new_secret", result.getPasswordHash());
+        assertEquals("New Name", result.getFullName());
+        assertEquals("https://new.png", result.getAvatarUrl());
+        assertEquals("USD", result.getBaseCurrency());
+        assertFalse(result.getIsActive());
+    }
+
+    @Test
+    void actualizarUsuario_ShouldThrowException_WhenFullUpdateValidationsOrLookupFail() {
+        // Arrange
+        UUID id = UUID.randomUUID();
+        UUID missingId = UUID.randomUUID();
+        UUID otherId = UUID.randomUUID();
+        Usuario existing = new Usuario(id, "juan@finance.com", "hash", "Juan", "https://a.png", "COP", true);
+        Usuario otherUser = new Usuario(otherId, "taken@finance.com", "hash", "Other", "https://b.png", "COP", true);
+        when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(existing);
+        when(usuarioGateWay.obtenerUsuarioPorId(missingId)).thenReturn(null);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("taken@finance.com")).thenReturn(otherUser);
+
+        // Act
+        IllegalArgumentException exMissingFields = assertThrows(IllegalArgumentException.class,
+                () -> usuarioUseCase.actualizarUsuario(null, "a@b.com", "123456", "Name", "url", "COP", true));
+        IllegalArgumentException exShortPass = assertThrows(IllegalArgumentException.class,
+                () -> usuarioUseCase.actualizarUsuario(id, "a@b.com", "123", "Name", "url", "COP", true));
+        IllegalArgumentException exUnsupportedCurrency = assertThrows(IllegalArgumentException.class,
+                () -> usuarioUseCase.actualizarUsuario(id, "a@b.com", "123456", "Name", "url", "JPY", true));
+        NoSuchElementException exNotFound = assertThrows(NoSuchElementException.class,
+                () -> usuarioUseCase.actualizarUsuario(missingId, "a@b.com", "123456", "Name", "url", "COP", true));
+        IllegalStateException exDuplicateEmail = assertThrows(IllegalStateException.class,
+                () -> usuarioUseCase.actualizarUsuario(id, "taken@finance.com", "123456", "Name", "url", "COP", true));
+
+        // Assert
+        assertEquals("Todos los campos del usuario son obligatorios para la actualización completa", exMissingFields.getMessage());
+        assertEquals("Todos los campos del usuario son obligatorios para la actualización completa", exShortPass.getMessage());
+        assertEquals("Moneda base no soportada", exUnsupportedCurrency.getMessage());
+        assertEquals("Usuario no encontrado", exNotFound.getMessage());
+        assertEquals("Ya existe una cuenta registrada con este correo electrónico", exDuplicateEmail.getMessage());
+    }
+
+    @Test
+    void actualizarUsuario_ShouldUpdateDomainObject_WhenValid() {
+        // Arrange
+        UUID id = UUID.randomUUID();
+        Usuario updated = new Usuario(id, "juan@finance.com", "hash", "Juan Actualizado", "https://a.png", "USD", true);
+        when(usuarioGateWay.actualizarUsuario(updated)).thenReturn(updated);
+
+        // Act
+        Usuario result = usuarioUseCase.actualizarUsuario(updated);
+
+        // Assert
+        assertEquals("Juan Actualizado", result.getFullName());
+    }
+
+    @Test
+    void cambiarEstadoCuenta_ShouldDeactivateAndActivateAndNotify() {
         // Arrange
         UUID id = UUID.randomUUID();
         Usuario activeUser = new Usuario(id, "status@example.com", "hash", "Status User", null, "USD", true);
-        Usuario deactivatedUser = new Usuario(id, "status@example.com", "hash", "Status User", null, "USD", false);
-
-        when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(activeUser);
-        when(usuarioGateWay.actualizarUsuario(activeUser)).thenReturn(deactivatedUser);
-
-        // Act
-        Usuario result = usuarioUseCase.cambiarEstadoCuenta(id, false);
-
-        // Assert
-        assertFalse(result.getIsActive());
-        verify(notificationGateway).notifyAccountStatusChanged("status@example.com", "DESACTIVADA");
-    }
-
-    @Test
-    void shouldActivateAccountAndNotifySuccessfully() {
-        // Arrange
-        UUID id = UUID.randomUUID();
-        Usuario inactiveUser = new Usuario(id, "status@example.com", "hash", "Status User", null, "USD", false);
-        Usuario activatedUser = new Usuario(id, "status@example.com", "hash", "Status User", null, "USD", true);
-
-        when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(inactiveUser);
-        when(usuarioGateWay.actualizarUsuario(inactiveUser)).thenReturn(activatedUser);
-
-        // Act
-        Usuario result = usuarioUseCase.cambiarEstadoCuenta(id, true);
-
-        // Assert
-        assertTrue(result.getIsActive());
-        verify(notificationGateway).notifyAccountStatusChanged("status@example.com", "ACTIVADA");
-    }
-
-    @Test
-    void shouldChangeAccountStatusWithoutNotificationWhenSingleArgConstructorUsed() {
-        // Arrange
-        UsuarioUseCase useCaseWithoutNotification = new UsuarioUseCase(usuarioGateWay);
-        UUID id = UUID.randomUUID();
-        Usuario activeUser = new Usuario(id, "single@example.com", "hash", "Single", null, "USD", true);
-
         when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(activeUser);
         when(usuarioGateWay.actualizarUsuario(activeUser)).thenReturn(activeUser);
 
         // Act
-        Usuario result = useCaseWithoutNotification.cambiarEstadoCuenta(id, false);
+        Usuario deactivated = usuarioUseCase.cambiarEstadoCuenta(id, false);
+        Usuario activated = usuarioUseCase.cambiarEstadoCuenta(id, true);
 
         // Assert
-        assertFalse(result.getIsActive());
-        verifyNoInteractions(notificationGateway);
+        assertTrue(activated.getIsActive());
+        assertNotNull(deactivated);
+        verify(notificationGateway).notifyAccountStatusChanged("status@example.com", "DESACTIVADA");
+        verify(notificationGateway).notifyAccountStatusChanged("status@example.com", "ACTIVADA");
     }
 
     @Test
-    void shouldThrowIllegalArgumentExceptionWhenChangeAccountStatusParamsAreNull() {
+    void cambiarEstadoCuenta_ShouldSucceedWhenNotificationIsNullOrThrows() {
         // Arrange
-        UUID id = UUID.randomUUID();
-
-        // Act
-        IllegalArgumentException ex1 = assertThrows(
-                IllegalArgumentException.class,
-                () -> usuarioUseCase.cambiarEstadoCuenta(null, true)
-        );
-        IllegalArgumentException ex2 = assertThrows(
-                IllegalArgumentException.class,
-                () -> usuarioUseCase.cambiarEstadoCuenta(id, null)
-        );
-
-        // Assert
-        assertEquals("El ID y el estado activo no pueden ser nulos", ex1.getMessage());
-        assertEquals("El ID y el estado activo no pueden ser nulos", ex2.getMessage());
-    }
-
-    @Test
-    void shouldThrowIllegalArgumentExceptionWhenChangeAccountStatusUserNotFound() {
-        // Arrange
-        UUID id = UUID.randomUUID();
-        when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(null);
-
-        // Act
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> usuarioUseCase.cambiarEstadoCuenta(id, false)
-        );
-
-        // Assert
-        assertEquals("Usuario no encontrado", exception.getMessage());
-    }
-
-    @Test
-    void shouldThrowIllegalStateExceptionWhenChangeAccountStatusIsRedundant() {
-        // Arrange
-        UUID id = UUID.randomUUID();
-        Usuario activeUser = new Usuario(id, "redundant@example.com", "hash", "Redundant", null, "USD", true);
-        when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(activeUser);
-
-        // Act
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
-                () -> usuarioUseCase.cambiarEstadoCuenta(id, true)
-        );
-
-        // Assert
-        assertEquals("La cuenta ya se encuentra en el estado solicitado", exception.getMessage());
-    }
-
-    @Test
-    void shouldCompleteChangeAccountStatusWhenNotificationGatewayThrowsException() {
-        // Arrange
+        UsuarioUseCase useCaseWithoutNotification = new UsuarioUseCase(usuarioGateWay);
         UUID id = UUID.randomUUID();
         Usuario activeUser = new Usuario(id, "resilient@example.com", "hash", "Resilient", null, "USD", true);
         when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(activeUser);
         when(usuarioGateWay.actualizarUsuario(activeUser)).thenReturn(activeUser);
         doThrow(new RuntimeException("Feign error")).when(notificationGateway)
-                .notifyAccountStatusChanged("resilient@example.com", "DESACTIVADA");
+                .notifyAccountStatusChanged("resilient@example.com", "ACTIVADA");
 
         // Act
-        Usuario result = usuarioUseCase.cambiarEstadoCuenta(id, false);
+        Usuario r1 = useCaseWithoutNotification.cambiarEstadoCuenta(id, false);
+        Usuario r2 = usuarioUseCase.cambiarEstadoCuenta(id, true);
 
         // Assert
-        assertFalse(result.getIsActive());
-        verify(notificationGateway).notifyAccountStatusChanged("resilient@example.com", "DESACTIVADA");
+        assertNotNull(r1);
+        assertTrue(r2.getIsActive());
+        verify(notificationGateway).notifyAccountStatusChanged("resilient@example.com", "ACTIVADA");
     }
 
     @Test
-    void shouldUpdateBaseCurrencyWithNormalizationSuccessfully() {
+    void cambiarEstadoCuenta_ShouldThrowException_WhenInvalidOrNotFoundOrRedundant() {
         // Arrange
         UUID id = UUID.randomUUID();
-        Usuario usuario = new Usuario(id, "currency@example.com", "hash", "Currency User", null, "USD", true);
-        when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(usuario);
-        when(usuarioGateWay.actualizarUsuario(usuario)).thenReturn(usuario);
+        UUID missingId = UUID.randomUUID();
+        Usuario activeUser = new Usuario(id, "redundant@example.com", "hash", "Redundant", null, "USD", true);
+        when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(activeUser);
+        when(usuarioGateWay.obtenerUsuarioPorId(missingId)).thenReturn(null);
 
         // Act
-        Usuario result = usuarioUseCase.actualizarMonedaBase(id, " cop ");
+        IllegalArgumentException exNullId = assertThrows(IllegalArgumentException.class,
+                () -> usuarioUseCase.cambiarEstadoCuenta(null, true));
+        NoSuchElementException exMissing = assertThrows(NoSuchElementException.class,
+                () -> usuarioUseCase.cambiarEstadoCuenta(missingId, false));
+        IllegalStateException exRedundant = assertThrows(IllegalStateException.class,
+                () -> usuarioUseCase.cambiarEstadoCuenta(id, true));
 
         // Assert
-        assertEquals("COP", result.getBaseCurrency());
-        verify(usuarioGateWay).actualizarUsuario(usuario);
+        assertEquals("El ID y el estado activo no pueden ser nulos", exNullId.getMessage());
+        assertEquals("Usuario no encontrado", exMissing.getMessage());
+        assertEquals("La cuenta ya se encuentra en el estado solicitado", exRedundant.getMessage());
+        verifyNoInteractions(notificationGateway);
     }
 
     @Test
-    void shouldThrowIllegalArgumentExceptionWhenUpdateBaseCurrencyParamsAreNullOrBlank() {
+    void actualizarMonedaBase_ShouldUpdateCurrency_WhenSupported() {
         // Arrange
         UUID id = UUID.randomUUID();
+        Usuario user = new Usuario(id, "juan@finance.com", "hash", "Juan Perez", null, "COP", true);
+        when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(user);
+        when(usuarioGateWay.actualizarUsuario(user)).thenReturn(user);
 
         // Act
-        IllegalArgumentException ex1 = assertThrows(
-                IllegalArgumentException.class,
-                () -> usuarioUseCase.actualizarMonedaBase(null, "USD")
-        );
-        IllegalArgumentException ex2 = assertThrows(
-                IllegalArgumentException.class,
-                () -> usuarioUseCase.actualizarMonedaBase(id, null)
-        );
-        IllegalArgumentException ex3 = assertThrows(
-                IllegalArgumentException.class,
-                () -> usuarioUseCase.actualizarMonedaBase(id, "   ")
-        );
+        Usuario result = usuarioUseCase.actualizarMonedaBase(id, " eur ");
 
         // Assert
-        assertEquals("El ID y la moneda base no pueden ser nulos o vacíos", ex1.getMessage());
-        assertEquals("El ID y la moneda base no pueden ser nulos o vacíos", ex2.getMessage());
-        assertEquals("El ID y la moneda base no pueden ser nulos o vacíos", ex3.getMessage());
+        assertEquals("EUR", result.getBaseCurrency());
     }
 
     @Test
-    void shouldThrowIllegalArgumentExceptionWhenBaseCurrencyIsUnsupported() {
-        // Arrange
-        UUID id = UUID.randomUUID();
-
-        // Act
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> usuarioUseCase.actualizarMonedaBase(id, "GBP")
-        );
-
-        // Assert
-        assertEquals("Moneda base no soportada", exception.getMessage());
-    }
-
-    @Test
-    void shouldThrowIllegalArgumentExceptionWhenUpdateBaseCurrencyUserNotFound() {
+    void actualizarMonedaBase_ShouldThrowException_WhenInvalidOrUnsupportedOrNotFound() {
         // Arrange
         UUID id = UUID.randomUUID();
         when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(null);
 
         // Act
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> usuarioUseCase.actualizarMonedaBase(id, "EUR")
-        );
+        IllegalArgumentException exNullId = assertThrows(IllegalArgumentException.class,
+                () -> usuarioUseCase.actualizarMonedaBase(null, "USD"));
+        IllegalArgumentException exBlank = assertThrows(IllegalArgumentException.class,
+                () -> usuarioUseCase.actualizarMonedaBase(id, "   "));
+        IllegalArgumentException exUnsupported = assertThrows(IllegalArgumentException.class,
+                () -> usuarioUseCase.actualizarMonedaBase(id, "GBP"));
+        NoSuchElementException exNotFound = assertThrows(NoSuchElementException.class,
+                () -> usuarioUseCase.actualizarMonedaBase(id, "USD"));
 
         // Assert
-        assertEquals("Usuario no encontrado", exception.getMessage());
+        assertEquals("El ID y la moneda base no pueden ser nulos o vacíos", exNullId.getMessage());
+        assertEquals("El ID y la moneda base no pueden ser nulos o vacíos", exBlank.getMessage());
+        assertEquals("Moneda base no soportada", exUnsupported.getMessage());
+        assertEquals("Usuario no encontrado", exNotFound.getMessage());
     }
 }

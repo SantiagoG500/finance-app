@@ -1,5 +1,6 @@
 package com.finance.account.domain.gateway;
 
+import java.time.Instant;
 import java.util.UUID;
 
 public interface TokenGateway {
@@ -12,4 +13,5 @@ public interface TokenGateway {
 
     boolean validateToken(String token);
 
+    Instant extractExpiration(String token);
 }

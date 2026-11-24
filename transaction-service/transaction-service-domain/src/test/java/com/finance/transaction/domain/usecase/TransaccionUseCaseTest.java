@@ -1,8 +1,12 @@
 package com.finance.transaction.domain.usecase;
 
+import com.finance.transaction.domain.model.Categoria;
 import com.finance.transaction.domain.model.Transaccion;
+import com.finance.transaction.domain.model.VerifiedUserSession;
 import com.finance.transaction.domain.model.enumns.FrecuenciaType;
 import com.finance.transaction.domain.model.enumns.TransaccionType;
+import com.finance.transaction.domain.model.gateway.AccountVerificationGateway;
+import com.finance.transaction.domain.model.gateway.CategoriaGateway;
 import com.finance.transaction.domain.model.gateway.NotificationGateway;
 import com.finance.transaction.domain.model.gateway.TransaccionGateway;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,11 +21,21 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class TransaccionUseCaseTest {
@@ -32,26 +46,48 @@ class TransaccionUseCaseTest {
     @Mock
     private NotificationGateway notificationGateway;
 
+    @Mock
+    private AccountVerificationGateway accountVerificationGateway;
+
+    @Mock
+    private CategoriaGateway categoriaGateway;
+
     private TransaccionUseCase transaccionUseCase;
 
     @BeforeEach
     void setUp() {
-        transaccionUseCase = new TransaccionUseCase(transaccionGateway, notificationGateway);
+        transaccionUseCase = new TransaccionUseCase(
+                transaccionGateway,
+                notificationGateway,
+                accountVerificationGateway,
+                categoriaGateway
+        );
+        lenient().when(accountVerificationGateway.verifyLoggedUser(anyString(), any()))
+                .thenAnswer(inv -> new VerifiedUserSession(inv.getArgument(0), "Test User", "jwt-token"));
+        lenient().when(categoriaGateway.obtenerCategoriaPorIdYUsuario(anyString(), anyString()))
+                .thenAnswer(inv -> Optional.of(new Categoria(
+                        inv.getArgument(0),
+                        inv.getArgument(1),
+                        "Salario",
+                        TransaccionType.INCOME
+                )));
     }
 
     @Test
-    void shouldSaveTransactionAndNotifyWhenValidWithEmail() {
+    void shouldSaveTransactionVerifyLoggedUserValidateCategoryAndNotifyWhenValidWithEmail() {
         // Arrange
         Transaccion input = buildValidTransaction("Pago de nómina");
         input.setCreatedAt(null);
         when(transaccionGateway.guardarTransaccion(any(Transaccion.class))).thenReturn(input);
 
         // Act
-        Transaccion saved = transaccionUseCase.guardarTransaccion(input, "user@finance.com");
+        Transaccion saved = transaccionUseCase.crearTransaccion(input, "user@finance.com", "Bearer jwt-token");
 
         // Assert
         assertNotNull(saved);
         assertNotNull(saved.getCreatedAt());
+        verify(accountVerificationGateway).verifyLoggedUser(input.getExternalUserId(), "Bearer jwt-token");
+        verify(categoriaGateway).obtenerCategoriaPorIdYUsuario(input.getCategoryId(), input.getExternalUserId());
         verify(transaccionGateway).guardarTransaccion(input);
         verify(notificationGateway).notifyTransactionCreated(
                 "user@finance.com",
@@ -59,6 +95,72 @@ class TransaccionUseCaseTest {
                 "1500.00 USD",
                 "Pago de nómina"
         );
+    }
+
+    @Test
+    void shouldThrowIllegalArgumentExceptionWhenCategoryDoesNotExistOrBelongsToAnotherUser() {
+        // Arrange
+        Transaccion input = buildValidTransaction("Compra");
+        when(categoriaGateway.obtenerCategoriaPorIdYUsuario(input.getCategoryId(), input.getExternalUserId()))
+                .thenReturn(Optional.empty());
+
+        // Act
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> transaccionUseCase.guardarTransaccion(input, "user@finance.com", "Bearer jwt-token")
+        );
+
+        // Assert
+        assertEquals("La categoría especificada no existe o no pertenece al usuario", exception.getMessage());
+        verify(transaccionGateway, never()).guardarTransaccion(any());
+    }
+
+    @Test
+    void shouldThrowIllegalArgumentExceptionWhenTransactionTypeDoesNotMatchCategoryType() {
+        // Arrange
+        Transaccion input = buildValidTransaction("Compra supermercado");
+        input.setType(TransaccionType.EXPENSE);
+        Categoria incomeCategory = new Categoria(
+                input.getCategoryId(),
+                input.getExternalUserId(),
+                "Salario",
+                TransaccionType.INCOME
+        );
+        when(categoriaGateway.obtenerCategoriaPorIdYUsuario(input.getCategoryId(), input.getExternalUserId()))
+                .thenReturn(Optional.of(incomeCategory));
+
+        // Act
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> transaccionUseCase.guardarTransaccion(input, "user@finance.com", "Bearer jwt-token")
+        );
+
+        // Assert
+        assertEquals("El tipo de la transacción no coincide con el tipo de la categoría", exception.getMessage());
+        verify(transaccionGateway, never()).guardarTransaccion(any());
+    }
+
+    @Test
+    void shouldThrowIllegalStateExceptionWhenAccountVerificationReturnsNullOrBlankId() {
+        // Arrange
+        Transaccion input = buildValidTransaction("Pago");
+        when(accountVerificationGateway.verifyLoggedUser(input.getExternalUserId(), "Bearer bad"))
+                .thenReturn(null)
+                .thenReturn(new VerifiedUserSession(" ", "User", "bad"));
+
+        // Act
+        IllegalStateException exNull = assertThrows(
+                IllegalStateException.class,
+                () -> transaccionUseCase.guardarTransaccion(input, "user@finance.com", "Bearer bad")
+        );
+        IllegalStateException exBlank = assertThrows(
+                IllegalStateException.class,
+                () -> transaccionUseCase.guardarTransaccion(input, "user@finance.com", "Bearer bad")
+        );
+
+        // Assert
+        assertEquals("La sesión del usuario no pudo ser verificada", exNull.getMessage());
+        assertEquals("La sesión del usuario no pudo ser verificada", exBlank.getMessage());
     }
 
     @Test
@@ -81,19 +183,29 @@ class TransaccionUseCaseTest {
     }
 
     @Test
-    void shouldSaveTransactionUsingSingleArgOverloadAndSingleArgConstructorWithoutNotification() {
+    void shouldSaveTransactionUsingOverloadsAndConstructorsWithoutNotificationOrVerification() {
         // Arrange
-        TransaccionUseCase useCaseWithoutNotifications = new TransaccionUseCase(transaccionGateway);
+        TransaccionUseCase useCaseSingleArg = new TransaccionUseCase(transaccionGateway);
+        TransaccionUseCase useCaseTwoArgs = new TransaccionUseCase(transaccionGateway, notificationGateway);
+        TransaccionUseCase useCaseThreeArgs = new TransaccionUseCase(
+                transaccionGateway,
+                notificationGateway,
+                accountVerificationGateway
+        );
         Transaccion input = buildValidTransaction("Alquiler");
         when(transaccionGateway.guardarTransaccion(input)).thenReturn(input);
 
         // Act
         Transaccion saved1 = transaccionUseCase.guardarTransaccion(input);
-        Transaccion saved2 = useCaseWithoutNotifications.guardarTransaccion(input, "user@finance.com");
+        Transaccion saved2 = useCaseSingleArg.guardarTransaccion(input, "user@finance.com");
+        Transaccion saved3 = useCaseTwoArgs.guardarTransaccion(input);
+        Transaccion saved4 = useCaseThreeArgs.guardarTransaccion(input);
 
         // Assert
         assertNotNull(saved1);
         assertNotNull(saved2);
+        assertNotNull(saved3);
+        assertNotNull(saved4);
         verifyNoInteractions(notificationGateway);
     }
 
@@ -230,34 +342,6 @@ class TransaccionUseCaseTest {
         // Assert
         assertEquals("El ID de la transacción no puede ser nulo o vacío.", exId.getMessage());
         assertEquals("El ID externo del usuario no puede ser nulo o vacío.", exUser.getMessage());
-    }
-
-    @Test
-    void shouldUpdateTransactionSuccessfullyWhenValid() {
-        // Arrange
-        Transaccion tx = buildValidTransaction("Updated");
-        when(transaccionGateway.actualizarTransaccion(tx)).thenReturn(tx);
-
-        // Act
-        Transaccion result = transaccionUseCase.actualizarTransaccion(tx);
-
-        // Assert
-        assertNotNull(result);
-        assertEquals("Updated", result.getDescription());
-        verify(transaccionGateway).actualizarTransaccion(tx);
-    }
-
-    @Test
-    void shouldDeleteTransactionSuccessfullyWhenParamsAreValid() {
-        // Arrange
-        String txId = UUID.randomUUID().toString();
-        String userId = UUID.randomUUID().toString();
-
-        // Act
-        transaccionUseCase.eliminarTransaccion(txId, userId);
-
-        // Assert
-        verify(transaccionGateway).eliminarTransaccion(txId, userId);
     }
 
     @Test

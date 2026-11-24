@@ -4,6 +4,7 @@ import com.finance.account.domain.gateway.NotificationGateway;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Primary;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -16,6 +17,7 @@ public class NotificationFeignAdapter implements NotificationGateway {
 
     private final NotificationFeignClient notificationFeignClient;
 
+    @Async("notificationAsyncExecutor")
     @Override
     public void notifyUserRegistration(String email) {
         if (email == null || email.isBlank()) {
@@ -28,6 +30,7 @@ public class NotificationFeignAdapter implements NotificationGateway {
         }
     }
 
+    @Async("notificationAsyncExecutor")
     @Override
     public void notifyLoginAlert(String email) {
         if (email == null || email.isBlank()) {
@@ -40,6 +43,7 @@ public class NotificationFeignAdapter implements NotificationGateway {
         }
     }
 
+    @Async("notificationAsyncExecutor")
     @Override
     public void notifyPasswordChanged(String email) {
         if (email == null || email.isBlank()) {
@@ -52,6 +56,7 @@ public class NotificationFeignAdapter implements NotificationGateway {
         }
     }
 
+    @Async("notificationAsyncExecutor")
     @Override
     public void notifyAccountStatusChanged(String email, String status) {
         if (email == null || email.isBlank() || status == null || status.isBlank()) {
