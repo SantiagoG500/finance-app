@@ -1,15 +1,20 @@
 package com.finance.transaction.infraestructure.driver_adapters.jpa_repository.adapter;
 
 import com.finance.transaction.domain.model.MetaAhorro;
+import com.finance.transaction.domain.model.PaginatedMetaAhorro;
 import com.finance.transaction.domain.model.gateway.MetaAhorrosGateway;
 import com.finance.transaction.infraestructure.driver_adapters.jpa_repository.entity.MetaAhorrosEntity;
 import com.finance.transaction.infraestructure.driver_adapters.jpa_repository.repository.MetaAhorrosJpaRepository;
 import com.finance.transaction.infraestructure.mapper.MetaAhorrosMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -28,9 +33,10 @@ public class MetaAhorrosAdapter implements MetaAhorrosGateway {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public MetaAhorro obtenerMetaAhorros(String id, String userId) {
-        UUID goalUuid = UUID.fromString(id);
-        UUID userUuid = UUID.fromString(userId);
+        UUID goalUuid = parseUuid(id, "ID de meta de ahorro");
+        UUID userUuid = parseUuid(userId, "ID de usuario");
 
         return jpaRepository.findByIdAndUserId(goalUuid, userUuid)
                 .map(mapper::toMetaAhorro)
@@ -38,12 +44,13 @@ public class MetaAhorrosAdapter implements MetaAhorrosGateway {
     }
 
     @Override
+    @Transactional
     public MetaAhorro actualizarMetaAhorros(MetaAhorro metaAhorro) {
-        UUID goalUuid = UUID.fromString(metaAhorro.getId());
-        UUID userUuid = UUID.fromString(metaAhorro.getExternalUserId());
+        UUID goalUuid = parseUuid(metaAhorro.getId(), "ID de meta de ahorro");
+        UUID userUuid = parseUuid(metaAhorro.getExternalUserId(), "ID de usuario");
 
         MetaAhorrosEntity existente = jpaRepository.findByIdAndUserId(goalUuid, userUuid)
-                .orElseThrow(() -> new IllegalArgumentException("Meta de ahorro no encontrada o no pertenece al usuario"));
+                .orElseThrow(() -> new NoSuchElementException("Meta de ahorro no encontrada o no pertenece al usuario"));
 
         existente.setTitle(metaAhorro.getTitle());
         existente.setTargetAmount(metaAhorro.getTargetAmount());
@@ -59,19 +66,53 @@ public class MetaAhorrosAdapter implements MetaAhorrosGateway {
     @Override
     @Transactional
     public void eliminarMetaAhorros(String id, String userId) {
-        UUID goalUuid = UUID.fromString(id);
-        UUID userUuid = UUID.fromString(userId);
+        UUID goalUuid = parseUuid(id, "ID de meta de ahorro");
+        UUID userUuid = parseUuid(userId, "ID de usuario");
+
+        if (jpaRepository.findByIdAndUserId(goalUuid, userUuid).isEmpty()) {
+            throw new NoSuchElementException("Meta de ahorro no encontrada o no pertenece al usuario");
+        }
 
         jpaRepository.deleteByIdAndUserId(goalUuid, userUuid);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<MetaAhorro> obtenerMetasPorUsuario(String userId) {
-        UUID userUuid = UUID.fromString(userId);
+        UUID userUuid = parseUuid(userId, "ID de usuario");
 
         return jpaRepository.findByUserId(userUuid)
                 .stream()
                 .map(mapper::toMetaAhorro)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaginatedMetaAhorro obtenerMetasPaginadasPorUsuario(String externalUserId, int page, int size) {
+        UUID userUuid = parseUuid(externalUserId, "ID de usuario");
+        PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<MetaAhorrosEntity> pageResult = jpaRepository.findByUserId(userUuid, pageRequest);
+        List<MetaAhorro> content = pageResult.getContent()
+                .stream()
+                .map(mapper::toMetaAhorro)
+                .collect(Collectors.toList());
+
+        return new PaginatedMetaAhorro(
+                content,
+                pageResult.getNumber(),
+                pageResult.getSize(),
+                pageResult.getTotalElements(),
+                pageResult.getTotalPages(),
+                pageResult.isLast()
+        );
+    }
+
+    private UUID parseUuid(String value, String fieldName) {
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new IllegalArgumentException("Formato UUID inválido para " + fieldName);
+        }
     }
 }

@@ -6,8 +6,10 @@ import com.finance.transaction.infraestructure.entry_points.dto.ResumenFinancier
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Component
@@ -15,8 +17,6 @@ import java.util.stream.Collectors;
 public class ResumenFinancieroMapper {
 
     private final MetaAhorrosMapper metaAhorrosMapper;
-
-    // --- Domain -> DTO Mappings ---
 
     public ResumenFinancieroDTO resumenFinancieroToDto(ResumenFinanciero resumen) {
         if (resumen == null) {
@@ -29,16 +29,24 @@ public class ResumenFinancieroMapper {
                 .collect(Collectors.toList())
                 : Collections.emptyList();
 
+        Map<String, BigDecimal> porCategoriaDto = (resumen.getPorCategoria() != null)
+                ? resumen.getPorCategoria()
+                : Collections.emptyMap();
+
+        String monedaBase = resumen.getMonedaBase() != null ? resumen.getMonedaBase() : resumen.getMoneda();
+
         return new ResumenFinancieroDTO(
                 resumen.getUsuarioId(),
                 resumen.getMoneda(),
+                monedaBase,
                 resumen.getIngresosMensuales(),
                 resumen.getGastosMensuales(),
                 resumen.getBalanceNetoMensual(),
                 resumen.getCompromisoAhorroMensual(),
                 resumen.getMargenLibre(),
                 metasDto,
-                resumen.getProyeccion1Ano()
+                resumen.getProyeccion1Ano(),
+                porCategoriaDto
         );
     }
 

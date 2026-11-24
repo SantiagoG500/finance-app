@@ -2,6 +2,7 @@ package com.finance.transaction.infraestructure.mapper;
 
 import com.finance.transaction.domain.model.Transaccion;
 import com.finance.transaction.infraestructure.driver_adapters.jpa_repository.entity.TransaccionEntity;
+import com.finance.transaction.infraestructure.entry_points.dto.CreateTransaccionRequestDTO;
 import com.finance.transaction.infraestructure.entry_points.dto.TransaccionRequestDTO;
 import com.finance.transaction.infraestructure.entry_points.dto.TransaccionResponseDTO;
 import org.springframework.stereotype.Component;
@@ -47,6 +48,24 @@ public class TransaccionMapper {
         );
     }
 
+    public Transaccion requestDtoToTransaccion(CreateTransaccionRequestDTO request, String userId) {
+        if (request == null) {
+            return null;
+        }
+        return new Transaccion(
+                null,
+                userId,
+                request.getCategoryId(),
+                request.getAmount(),
+                request.getCurrency() != null ? request.getCurrency().trim().toUpperCase() : null,
+                request.getType(),
+                request.getFrequency(),
+                request.getDescription(),
+                request.getTransactionDate(),
+                null
+        );
+    }
+
     public Transaccion requestDtoToTransaccion(TransaccionRequestDTO request, String userId) {
         if (request == null) {
             return null;
@@ -56,12 +75,12 @@ public class TransaccionMapper {
                 userId,
                 request.getCategoryId(),
                 request.getAmount(),
-                request.getCurrency(),
+                request.getCurrency() != null ? request.getCurrency().trim().toUpperCase() : null,
                 request.getType(),
                 request.getFrequency(),
                 request.getDescription(),
                 request.getTransactionDate(),
-                null // Manejado por UseCase o @CreatedDate
+                null
         );
     }
 
@@ -71,6 +90,7 @@ public class TransaccionMapper {
         }
         return new TransaccionResponseDTO(
                 transaccion.getId(),
+                transaccion.getExternalUserId(),
                 transaccion.getCategoryId(),
                 transaccion.getAmount(),
                 transaccion.getCurrency(),

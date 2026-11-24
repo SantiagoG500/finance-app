@@ -47,6 +47,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       ACCOUNT_SERVICE_URL: http://account-service:8080
       NOTIFICATION_SERVICE_URL: http://notification-service:8082
+      EXCHANGERATE_API_KEY: ${EXCHANGERATE_API_KEY:-}
+      RESTCOUNTRIES_API_KEY: ${RESTCOUNTRIES_API_KEY:-}
       JAVA_TOOL_OPTIONS: "-Xmx512m -Xms256m"
     networks:
       - finanzas-net

@@ -1,16 +1,15 @@
 package com.finance.account.domain.model;
 
 import lombok.AllArgsConstructor;
-import lombok.Getter;
+import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
+@Data
 @AllArgsConstructor
 @NoArgsConstructor
-@Setter
-@Getter
 public class Usuario {
 
     private UUID id;
@@ -20,5 +19,15 @@ public class Usuario {
     private String avatarUrl;
     private String baseCurrency;
     private Boolean isActive;
+    private LocalDateTime createdAt;
 
+    public Usuario(UUID id, String email, String passwordHash, String fullName, String avatarUrl, String baseCurrency, Boolean isActive) {
+        this.id = id;
+        this.email = email;
+        this.passwordHash = passwordHash;
+        this.fullName = fullName;
+        this.avatarUrl = avatarUrl;
+        this.baseCurrency = baseCurrency;
+        this.isActive = isActive;
+    }
 }

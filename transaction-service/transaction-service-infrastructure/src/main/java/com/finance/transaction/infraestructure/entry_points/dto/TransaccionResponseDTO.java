@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 public class TransaccionResponseDTO {
 
     private String id;
+    private String userId;
     private String categoryId;
     private BigDecimal amount;
     private String currency;
