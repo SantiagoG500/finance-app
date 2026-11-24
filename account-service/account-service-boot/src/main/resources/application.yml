@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 services:
   notification:
@@ -13,7 +13,7 @@ spring:
     url: ${DATABASE_URL}
     username: ${DATABASE_USERNAME}
     password: ${DATABASE_PASSWORD}
-    driver-class-name: ${DATABASE_DRIVER_CLASS_NAME}
+    driver-class-name: ${DATABASE_DRIVER_CLASS_NAME:org.postgresql.Driver}
     hikari:
       max-lifetime: 60000
       idle-timeout: 30000
@@ -25,7 +25,7 @@ spring:
     show-sql: ${JPA_SHOW_SQL:true}
     properties:
       hibernate:
-        dialect: ${JPA_PROPERTIES_HIBERNATE_DIALECT}
+        dialect: ${JPA_PROPERTIES_HIBERNATE_DIALECT:org.hibernate.dialect.PostgreSQLDialect}
         format_sql: ${JPA_PROPERTIES_HIBERNATE_FORMAT_SQL:true}
         ddl-auto: ${JPA_HIBERNATE_DDL_AUTO:update}
     open-in-view: ${JPA_OPEN_IN_VIEW:false}
