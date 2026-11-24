@@ -1,8 +1,9 @@
 package com.finance.transaction.infraestructure.entry_points;
 
 import com.finance.transaction.domain.model.Transaccion;
+import com.finance.transaction.domain.model.enumns.TransaccionType;
 import com.finance.transaction.domain.usecase.TransaccionUseCase;
-import com.finance.transaction.infraestructure.entry_points.dto.TransaccionRequestDTO;
+import com.finance.transaction.infraestructure.entry_points.dto.CreateTransaccionRequestDTO;
 import com.finance.transaction.infraestructure.entry_points.dto.TransaccionResponseDTO;
 import com.finance.transaction.infraestructure.mapper.TransaccionMapper;
 import jakarta.validation.Valid;
@@ -13,7 +14,18 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/finances")
@@ -26,16 +38,15 @@ public class TransaccionController {
 
     @PostMapping("/save")
     public ResponseEntity<TransaccionResponseDTO> guardarTransaccion(
-            @Valid @RequestBody TransaccionRequestDTO request,
-            @AuthenticationPrincipal Jwt jwt
+            @Valid @RequestBody CreateTransaccionRequestDTO request,
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader
     ) {
-        String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
+        String userId = JwtContextHelper.extractUserId(jwt);
+        String userEmail = JwtContextHelper.extractUserEmail(jwt);
+        String bearerToken = JwtContextHelper.resolveBearerToken(authorizationHeader, jwt);
         Transaccion transaccion = transaccionMapper.requestDtoToTransaccion(request, userId);
-        Transaccion transaccionCreada = transaccionUseCase.guardarTransaccion(transaccion);
+        Transaccion transaccionCreada = transaccionUseCase.guardarTransaccion(transaccion, userEmail, bearerToken);
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(transaccionMapper.transaccionToResponseDto(transaccionCreada));
@@ -44,55 +55,32 @@ public class TransaccionController {
     @GetMapping("/get/{id}")
     public ResponseEntity<TransaccionResponseDTO> obtenerTransaccionPorID(
             @PathVariable("id") @NotBlank(message = "ID no debe estar vacío") String id,
-            @AuthenticationPrincipal Jwt jwt
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader
     ) {
-        String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        Transaccion transaccion = transaccionUseCase.obtenerTransaccion(id, userId);
+        String userId = JwtContextHelper.extractUserId(jwt);
+        String bearerToken = JwtContextHelper.resolveBearerToken(authorizationHeader, jwt);
+        Transaccion transaccion = transaccionUseCase.obtenerTransaccion(id, userId, bearerToken);
         if (transaccion == null) {
-            return ResponseEntity.notFound().build();
+            throw new NoSuchElementException("Transacción no encontrada");
         }
 
         return ResponseEntity.ok(transaccionMapper.transaccionToResponseDto(transaccion));
     }
 
-    @PutMapping("/update")
-    public ResponseEntity<TransaccionResponseDTO> actualizarTransaccion(
-            @Valid @RequestBody TransaccionRequestDTO request,
-            @AuthenticationPrincipal Jwt jwt
+    @GetMapping("/transactions/by-type")
+    public ResponseEntity<List<TransaccionResponseDTO>> obtenerTransaccionesPorTipo(
+            @RequestParam("type") TransaccionType type,
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader
     ) {
-        String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
+        String userId = JwtContextHelper.extractUserId(jwt);
+        String bearerToken = JwtContextHelper.resolveBearerToken(authorizationHeader, jwt);
+        List<Transaccion> transacciones = transaccionUseCase.obtenerTransaccionesPorTipo(userId, type, bearerToken);
+        List<TransaccionResponseDTO> responseList = transacciones.stream()
+                .map(transaccionMapper::transaccionToResponseDto)
+                .collect(Collectors.toList());
 
-        Transaccion transaccion = transaccionMapper.requestDtoToTransaccion(request, userId);
-        Transaccion transaccionActualizada = transaccionUseCase.actualizarTransaccion(transaccion);
-
-        return ResponseEntity.ok(transaccionMapper.transaccionToResponseDto(transaccionActualizada));
-    }
-
-    @DeleteMapping("/delete/{id}")
-    public ResponseEntity<Void> deleteTransaccion(
-            @PathVariable("id") @NotBlank(message = "ID no debe estar vacío") String id,
-            @AuthenticationPrincipal Jwt jwt
-    ) {
-        String userId = extractUserId(jwt);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        transaccionUseCase.eliminarTransaccion(id, userId);
-        return ResponseEntity.noContent().build();
-    }
-
-    private String extractUserId(Jwt jwt) {
-        if (jwt == null || jwt.getSubject() == null || jwt.getSubject().trim().isEmpty()) {
-            return null;
-        }
-        return jwt.getSubject();
+        return ResponseEntity.ok(responseList);
     }
 }

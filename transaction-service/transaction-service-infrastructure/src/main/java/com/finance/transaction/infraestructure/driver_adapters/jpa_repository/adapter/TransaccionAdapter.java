@@ -21,6 +21,7 @@ public class TransaccionAdapter implements TransaccionGateway {
     private final TransaccionMapper mapper;
 
     @Override
+    @Transactional
     public Transaccion guardarTransaccion(Transaccion transaction) {
         TransaccionEntity entity = mapper.transaccionToEntity(transaction);
         TransaccionEntity savedEntity = jpaRepository.save(entity);
@@ -28,9 +29,10 @@ public class TransaccionAdapter implements TransaccionGateway {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Transaccion obtenerTransaccion(String id, String userId) {
-        UUID txUuid = UUID.fromString(id);
-        UUID userUuid = UUID.fromString(userId);
+        UUID txUuid = parseUuid(id, "ID de transacción");
+        UUID userUuid = parseUuid(userId, "ID de usuario");
 
         return jpaRepository.findByIdAndUserId(txUuid, userUuid)
                 .map(mapper::entityToTransaccion)
@@ -38,41 +40,29 @@ public class TransaccionAdapter implements TransaccionGateway {
     }
 
     @Override
-    public Transaccion actualizarTransaccion(Transaccion transaccion) {
-        UUID txUuid = UUID.fromString(transaccion.getId());
-        UUID userUuid = UUID.fromString(transaccion.getExternalUserId());
-
-        TransaccionEntity existente = jpaRepository.findByIdAndUserId(txUuid, userUuid)
-                .orElseThrow(() -> new IllegalArgumentException("Transacción no encontrada o no pertenece al usuario"));
-
-        existente.setCategoryId(UUID.fromString(transaccion.getCategoryId()));
-        existente.setAmount(transaccion.getAmount());
-        existente.setCurrency(transaccion.getCurrency());
-        existente.setType(transaccion.getType());
-        existente.setFrequency(transaccion.getFrequency());
-        existente.setDescription(transaccion.getDescription());
-        existente.setTransactionDate(transaccion.getTransactionDate());
-
-        TransaccionEntity transaccionActualizada = jpaRepository.save(existente);
-        return mapper.entityToTransaccion(transaccionActualizada);
-    }
-
-    @Override
-    @Transactional
-    public void eliminarTransaccion(String id, String userId) {
-        UUID txUuid = UUID.fromString(id);
-        UUID userUuid = UUID.fromString(userId);
-
-        jpaRepository.deleteByIdAndUserId(txUuid, userUuid);
-    }
-
-    @Override
+    @Transactional(readOnly = true)
     public List<Transaccion> obtenerTransaccionesPorUsuario(String userId) {
-        UUID userUuid = UUID.fromString(userId);
+        UUID userUuid = parseUuid(userId, "ID de usuario");
 
         return jpaRepository.findByUserId(userUuid)
                 .stream()
                 .map(mapper::entityToTransaccion)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existeTransaccionPorCategoriaYUsuario(String categoryId, String userId) {
+        UUID categoryUuid = parseUuid(categoryId, "ID de categoría");
+        UUID userUuid = parseUuid(userId, "ID de usuario");
+        return jpaRepository.existsByCategoryIdAndUserId(categoryUuid, userUuid);
+    }
+
+    private UUID parseUuid(String value, String fieldName) {
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new IllegalArgumentException("Formato UUID inválido para " + fieldName);
+        }
     }
 }

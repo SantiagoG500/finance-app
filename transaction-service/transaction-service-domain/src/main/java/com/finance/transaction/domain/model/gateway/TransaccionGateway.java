@@ -10,10 +10,8 @@ public interface TransaccionGateway {
 
     Transaccion obtenerTransaccion(String id, String externalId);
 
-    Transaccion actualizarTransaccion(Transaccion transaccion);
-
-    void eliminarTransaccion(String id, String externalId);
-
     List<Transaccion> obtenerTransaccionesPorUsuario(String externalId);
+
+    boolean existeTransaccionPorCategoriaYUsuario(String categoryId, String userId);
 
 }

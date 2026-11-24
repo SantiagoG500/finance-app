@@ -13,9 +13,8 @@ import lombok.Setter;
 public class Categoria {
 
     private String id;
-    private String externalUserId;
+    private String userId;
     private String name;
     private TransaccionType type;
-    private String icon;
 
 }
