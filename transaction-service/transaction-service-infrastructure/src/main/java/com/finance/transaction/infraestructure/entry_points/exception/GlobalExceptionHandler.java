@@ -127,6 +127,9 @@ public class GlobalExceptionHandler {
             IllegalStateException ex,
             HttpServletRequest request
     ) {
+        if (ex.getMessage() != null && ex.getMessage().contains("Cuenta desactivada")) {
+            return buildErrorResponse(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+        }
         return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage(), request);
     }
 
@@ -171,6 +174,9 @@ public class GlobalExceptionHandler {
             FeignException.NotFound ex,
             HttpServletRequest request
     ) {
+        if (isAccountServiceRequest(ex)) {
+            return handleAccountServiceFeignException(ex, request);
+        }
         return buildErrorResponse(
                 HttpStatus.BAD_REQUEST,
                 "Moneda no soportada por el proveedor externo",
@@ -183,6 +189,9 @@ public class GlobalExceptionHandler {
             FeignException ex,
             HttpServletRequest request
     ) {
+        if (isAccountServiceRequest(ex)) {
+            return handleAccountServiceFeignException(ex, request);
+        }
         return buildErrorResponse(
                 HttpStatus.BAD_GATEWAY,
                 "Proveedor externo de divisas temporalmente no disponible",
@@ -198,6 +207,40 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 "Ha ocurrido un error interno inesperado en el servidor",
+                request
+        );
+    }
+
+    private boolean isAccountServiceRequest(FeignException ex) {
+        if (ex == null || ex.request() == null || ex.request().url() == null) {
+            return false;
+        }
+        String url = ex.request().url();
+        return url.contains("/api/usuarios") || url.contains("/api/auth");
+    }
+
+    private ResponseEntity<ErrorResponseDTO> handleAccountServiceFeignException(
+            FeignException ex,
+            HttpServletRequest request
+    ) {
+        int status = ex.status();
+        if (status == 401 || status == 404) {
+            return buildErrorResponse(
+                    HttpStatus.UNAUTHORIZED,
+                    "No se pudo verificar la autenticación o cuenta del usuario en account-service",
+                    request
+            );
+        }
+        if (status == 403) {
+            return buildErrorResponse(
+                    HttpStatus.FORBIDDEN,
+                    "Acceso denegado al verificar permisos de la cuenta en account-service",
+                    request
+            );
+        }
+        return buildErrorResponse(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "El servicio de cuentas (account-service) no está disponible temporalmente",
                 request
         );
     }

@@ -18,6 +18,7 @@ import java.util.NoSuchElementException;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -149,27 +150,53 @@ class AuthUseCaseTest {
         assertNotNull(result);
         assertEquals("jwt-login", result.getToken());
         assertEquals(userId, result.getUsuario().getId());
+        verify(tokenBlacklistGateway, never()).revokeActiveSessionByEmail(any());
         verify(tokenBlacklistGateway).registerActiveSession("test@finance.com", "jwt-login", expiresAt);
         verify(notificationGateway).notifyLoginAlert("test@finance.com");
     }
 
     @Test
-    void login_ShouldThrowIllegalStateException_WhenUserAlreadyHasActiveSession() {
+    void login_ShouldAllowInactiveUserToAuthenticateSoAccountCanBeReactivated() {
         // Arrange
         UUID userId = UUID.randomUUID();
+        Instant expiresAt = Instant.now().plusSeconds(3600);
+        Usuario inactiveUser = new Usuario(userId, "inactive@finance.com", "hashed_pw", "Juan Inactivo", null, "USD", false);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("inactive@finance.com")).thenReturn(inactiveUser);
+        when(passwordEncoderGateway.matches("secret123", "hashed_pw")).thenReturn(true);
+        when(tokenBlacklistGateway.hasActiveSession("inactive@finance.com")).thenReturn(false);
+        when(tokenGateway.generateToken(userId, "inactive@finance.com", "Juan Inactivo")).thenReturn("jwt-inactive");
+        when(tokenGateway.extractExpiration("jwt-inactive")).thenReturn(expiresAt);
+
+        // Act
+        AuthResult result = authUseCase.login("inactive@finance.com", "secret123");
+
+        // Assert
+        assertNotNull(result);
+        assertEquals("jwt-inactive", result.getToken());
+        assertFalse(result.getUsuario().getIsActive());
+        verify(tokenBlacklistGateway).registerActiveSession("inactive@finance.com", "jwt-inactive", expiresAt);
+    }
+
+    @Test
+    void login_ShouldRevokePreviousTokenAndIssueNewJwtWithoutConflict_WhenUserAlreadyHasActiveSession() {
+        // Arrange
+        UUID userId = UUID.randomUUID();
+        Instant newExpiry = Instant.now().plusSeconds(3600);
         Usuario user = new Usuario(userId, "test@finance.com", "hashed_pw", "Juan Perez", null, "COP", true);
         when(usuarioGateWay.obtenerUsuarioPorEmail("test@finance.com")).thenReturn(user);
         when(passwordEncoderGateway.matches("secret123", "hashed_pw")).thenReturn(true);
         when(tokenBlacklistGateway.hasActiveSession("test@finance.com")).thenReturn(true);
+        when(tokenGateway.generateToken(userId, "test@finance.com", "Juan Perez")).thenReturn("jwt-rotated-token");
+        when(tokenGateway.extractExpiration("jwt-rotated-token")).thenReturn(newExpiry);
 
         // Act
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> authUseCase.login("test@finance.com", "secret123"));
+        AuthResult result = authUseCase.login("test@finance.com", "secret123");
 
         // Assert
-        assertEquals("El usuario ya tiene una sesión activa. Debe cerrar sesión antes de volver a iniciar.", ex.getMessage());
-        verify(tokenGateway, never()).generateToken(any(), any(), any());
-        verify(tokenBlacklistGateway, never()).registerActiveSession(any(), any(), any());
+        assertNotNull(result);
+        assertEquals("jwt-rotated-token", result.getToken());
+        verify(tokenBlacklistGateway).revokeActiveSessionByEmail("test@finance.com");
+        verify(tokenBlacklistGateway).registerActiveSession("test@finance.com", "jwt-rotated-token", newExpiry);
     }
 
     @Test
@@ -202,12 +229,10 @@ class AuthUseCaseTest {
     }
 
     @Test
-    void login_ShouldThrowException_WhenCredentialsInvalidOrUserNotFoundOrInactive() {
+    void login_ShouldThrowException_WhenCredentialsInvalidOrUserNotFound() {
         // Arrange
-        Usuario inactiveUser = new Usuario(UUID.randomUUID(), "inactive@finance.com", "hash", "Juan", null, "COP", false);
         Usuario activeUser = new Usuario(UUID.randomUUID(), "active@finance.com", "hash", "Juan", null, "COP", true);
         when(usuarioGateWay.obtenerUsuarioPorEmail("missing@finance.com")).thenReturn(null);
-        when(usuarioGateWay.obtenerUsuarioPorEmail("inactive@finance.com")).thenReturn(inactiveUser);
         when(usuarioGateWay.obtenerUsuarioPorEmail("active@finance.com")).thenReturn(activeUser);
         when(passwordEncoderGateway.matches("wrongpass", "hash")).thenReturn(false);
 
@@ -216,15 +241,12 @@ class AuthUseCaseTest {
                 () -> authUseCase.login("", "secret123"));
         IllegalArgumentException exNotFound = assertThrows(IllegalArgumentException.class,
                 () -> authUseCase.login("missing@finance.com", "secret123"));
-        IllegalStateException exInactive = assertThrows(IllegalStateException.class,
-                () -> authUseCase.login("inactive@finance.com", "secret123"));
         IllegalArgumentException exWrongPass = assertThrows(IllegalArgumentException.class,
                 () -> authUseCase.login("active@finance.com", "wrongpass"));
 
         // Assert
         assertEquals("El email y la contraseña son obligatorios", exEmpty.getMessage());
         assertEquals("Credenciales inválidas", exNotFound.getMessage());
-        assertEquals("La cuenta de usuario está desactivada", exInactive.getMessage());
         assertEquals("Credenciales inválidas", exWrongPass.getMessage());
     }
 

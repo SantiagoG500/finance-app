@@ -8,6 +8,7 @@ import com.finance.account.domain.usecase.UsuarioUseCase;
 import com.finance.account.infraestructure.config.AsyncConfig;
 import com.finance.account.infraestructure.config.JwtAuthenticationFilter;
 import com.finance.account.infraestructure.config.SecurityConfig;
+import com.finance.account.infraestructure.entry_points.dto.ErrorResponseDTO;
 import com.finance.account.infraestructure.entry_points.dto.UpdateAccountStatusRequestDTO;
 import com.finance.account.infraestructure.entry_points.dto.UpdateBaseCurrencyRequestDTO;
 import com.finance.account.infraestructure.entry_points.dto.UpdateUsuarioRequestDTO;
@@ -22,13 +23,21 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.MethodParameter;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.web.bind.MissingRequestHeaderException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -37,6 +46,8 @@ import java.util.NoSuchElementException;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
@@ -152,34 +163,48 @@ class UsuarioControllerTest {
 
     @Test
     @WithMockUser(username = "upd@example.com")
-    void shouldUpdateUserWithFullPutAndExcludePasswordHash() throws Exception {
+    void shouldUpdateUserWithPutAllowingOmittedPasswordAndIsActiveAndRejectShortNonEmptyPassword() throws Exception {
         // Arrange
         UUID id = UUID.randomUUID();
         Usuario existingUser = new Usuario(id, "upd@example.com", "old_hash", "Old Name", "http://old", "COP", true);
-        Usuario updatedUser = new Usuario(id, "upd@example.com", "new_hash", "Updated Name", "http://new", "USD", true);
-        UpdateUsuarioRequestDTO request = new UpdateUsuarioRequestDTO(
+        Usuario updatedUser = new Usuario(id, "upd@example.com", "old_hash", "Updated Name", "http://new", "USD", true);
+        UpdateUsuarioRequestDTO partialRequest = new UpdateUsuarioRequestDTO(
                 "upd@example.com",
-                "newPassword123",
+                null,
                 "Updated Name",
                 "http://new",
                 "USD",
-                true
+                null
+        );
+        UpdateUsuarioRequestDTO shortPassRequest = new UpdateUsuarioRequestDTO(
+                "upd@example.com",
+                "123",
+                "Updated Name",
+                "http://new",
+                "USD",
+                null
         );
 
         when(usuarioUseCase.obtenerUsuarioPorId(id)).thenReturn(existingUser);
-        when(usuarioUseCase.actualizarUsuario(id, "upd@example.com", "newPassword123", "Updated Name", "http://new", "USD", true))
+        when(usuarioUseCase.actualizarUsuario(id, "upd@example.com", null, "Updated Name", "http://new", "USD", null))
                 .thenReturn(updatedUser);
 
         // Act
-        ResultActions response = mockMvc.perform(put("/api/usuarios/update/{id}", id)
+        ResultActions okResponse = mockMvc.perform(put("/api/usuarios/update/{id}", id)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)));
+                .content(objectMapper.writeValueAsString(partialRequest)));
+        ResultActions badPassResponse = mockMvc.perform(put("/api/usuarios/update/{id}", id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(shortPassRequest)));
 
         // Assert
-        response.andExpect(status().isOk())
+        okResponse.andExpect(status().isOk())
                 .andExpect(jsonPath("$.fullName").value("Updated Name"))
                 .andExpect(jsonPath("$.baseCurrency").value("USD"))
+                .andExpect(jsonPath("$.isActive").value(true))
                 .andExpect(jsonPath("$.passwordHash").doesNotExist());
+        badPassResponse.andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("La contraseña debe tener al menos 6 caracteres")));
     }
 
     @Test
@@ -254,7 +279,7 @@ class UsuarioControllerTest {
 
     @Test
     @WithMockUser(username = "tester@example.com")
-    void shouldHandleGlobalExceptionsForTypeMismatchMalformedJsonNotFoundConflictTimeoutSaturatedAndInternalError() throws Exception {
+    void shouldHandleGlobalExceptionsWithTypedErrorResponseDtoAndInstantTimestamp() throws Exception {
         // Arrange
         UUID notFoundId = UUID.randomUUID();
         UUID conflictId = UUID.randomUUID();
@@ -278,6 +303,7 @@ class UsuarioControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{malformed-json"));
         ResultActions methodNotAllowedRes = mockMvc.perform(delete("/api/usuarios/{id}/currency", UUID.randomUUID()));
+        ResultActions noResourceRes = mockMvc.perform(get("/api/usuarios/nonexistent-route"));
         ResultActions notFoundRes = mockMvc.perform(get("/api/usuarios/get/{id}", notFoundId));
         ResultActions conflictRes = mockMvc.perform(get("/api/usuarios/get/{id}", conflictId));
         ResultActions dataConflictRes = mockMvc.perform(get("/api/usuarios/get/{id}", dataConflictId));
@@ -286,9 +312,12 @@ class UsuarioControllerTest {
         ResultActions internalErrorRes = mockMvc.perform(get("/api/usuarios/get/{id}", errorId));
 
         // Assert
-        typeMismatchRes.andExpect(status().isBadRequest());
+        typeMismatchRes.andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.timestamp").value(containsString("Z")));
         malformedJsonRes.andExpect(status().isBadRequest());
         methodNotAllowedRes.andExpect(status().isMethodNotAllowed());
+        noResourceRes.andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("Ruta no encontrada"));
         notFoundRes.andExpect(status().isNotFound());
         conflictRes.andExpect(status().isConflict());
         dataConflictRes.andExpect(status().isConflict());
@@ -302,14 +331,40 @@ class UsuarioControllerTest {
     }
 
     @Test
-    void shouldCreateBoundedNotificationAsyncExecutorBean() {
+    void shouldCreateBoundedNotificationAsyncExecutorBeanAndCoverRemainingGlobalExceptionHandlers() throws Exception {
         // Arrange
         AsyncConfig asyncConfig = new AsyncConfig();
+        ErrorResponseDTO errorDto = new ErrorResponseDTO();
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        MockHttpServletRequest servletRequest = new MockHttpServletRequest("GET", "/api/usuarios");
+        MethodParameter methodParameter = new MethodParameter(
+                AuthController.class.getDeclaredMethod("logout", String.class),
+                0
+        );
+        MissingRequestHeaderException missingHeaderEx = new MissingRequestHeaderException("Authorization", methodParameter);
+        MissingServletRequestParameterException missingParamEx = new MissingServletRequestParameterException("email", "String");
+        NoResourceFoundException noResourceEx = new NoResourceFoundException(HttpMethod.GET, "/api/unknown");
 
         // Act
         Executor executor = asyncConfig.notificationAsyncExecutor();
+        errorDto.setTimestamp("2026-11-24T10:00:00Z");
+        errorDto.setStatus(400);
+        errorDto.setError("Solicitud inválida");
+        errorDto.setMessage("Detalle");
+        errorDto.setPath("/api/usuarios");
+        ResponseEntity<ErrorResponseDTO> headerRes = handler.handleMissingHeader(missingHeaderEx, servletRequest);
+        ResponseEntity<ErrorResponseDTO> paramRes = handler.handleMissingParam(missingParamEx, servletRequest);
+        ResponseEntity<ErrorResponseDTO> resourceRes = handler.handleNoResourceFound(noResourceEx, servletRequest);
 
         // Assert
         assertNotNull(executor);
+        assertEquals(400, errorDto.getStatus());
+        assertEquals("Solicitud inválida", errorDto.getError());
+        assertEquals("Detalle", errorDto.getMessage());
+        assertEquals("/api/usuarios", errorDto.getPath());
+        assertEquals("2026-11-24T10:00:00Z", errorDto.getTimestamp());
+        assertEquals(HttpStatus.BAD_REQUEST, headerRes.getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST, paramRes.getStatusCode());
+        assertEquals(HttpStatus.NOT_FOUND, resourceRes.getStatusCode());
     }
 }

@@ -8,10 +8,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mail.MailAuthenticationException;
 import org.springframework.mail.MailSendException;
 import org.springframework.mail.javamail.JavaMailSender;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doThrow;
@@ -90,24 +92,34 @@ class GoogleMailSenderAdapterTest {
 
         // Assert
         assertTrue(exception.getMessage().contains("Error al construir el correo HTML para: user@finance.com"));
+        assertInstanceOf(MessagingException.class, exception.getCause());
     }
 
     @Test
-    void shouldPropagateRuntimeExceptionWhenJavaMailSenderSendFails() {
+    void shouldCatchMailSendAndMailAuthenticationExceptionsWithoutEscalatingUnhandled500() {
         // Arrange
         GoogleMailSenderAdapter adapter = new GoogleMailSenderAdapter(javaMailSender, "noreply@finance.com");
         Notification notification = new Notification("user@finance.com", "Subject Fail", "<p>Body</p>");
         MimeMessage mimeMessage = new MimeMessage((Session) null);
         when(javaMailSender.createMimeMessage()).thenReturn(mimeMessage);
-        doThrow(new MailSendException("SMTP server down")).when(javaMailSender).send(mimeMessage);
+        doThrow(new MailSendException("SMTP server down"))
+                .doThrow(new MailAuthenticationException("Invalid SMTP credentials"))
+                .when(javaMailSender).send(mimeMessage);
 
         // Act
-        MailSendException exception = assertThrows(
-                MailSendException.class,
+        IllegalStateException sendEx = assertThrows(
+                IllegalStateException.class,
+                () -> adapter.send(notification)
+        );
+        IllegalStateException authEx = assertThrows(
+                IllegalStateException.class,
                 () -> adapter.send(notification)
         );
 
         // Assert
-        assertTrue(exception.getMessage().contains("SMTP server down"));
+        assertTrue(sendEx.getMessage().contains("Error al enviar el correo electrónico a: user@finance.com"));
+        assertInstanceOf(MailSendException.class, sendEx.getCause());
+        assertTrue(authEx.getMessage().contains("Error al enviar el correo electrónico a: user@finance.com"));
+        assertInstanceOf(MailAuthenticationException.class, authEx.getCause());
     }
 }

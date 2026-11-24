@@ -5,6 +5,7 @@ import com.finance.notification.domain.model.Notification;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
@@ -39,6 +40,8 @@ public class GoogleMailSenderAdapter implements NotificationSenderGateway {
             javaMailSender.send(mimeMessage);
         } catch (MessagingException e) {
             throw new IllegalStateException("Error al construir el correo HTML para: " + notification.recipient(), e);
+        } catch (MailException e) {
+            throw new IllegalStateException("Error al enviar el correo electrónico a: " + notification.recipient(), e);
         }
     }
 }

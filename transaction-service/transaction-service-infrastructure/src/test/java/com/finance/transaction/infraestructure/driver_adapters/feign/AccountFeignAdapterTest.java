@@ -1,5 +1,6 @@
 package com.finance.transaction.infraestructure.driver_adapters.feign;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finance.transaction.domain.model.VerifiedUserSession;
 import com.finance.transaction.infraestructure.driver_adapters.feign.dto.AccountUserResponseDTO;
 import feign.FeignException;
@@ -18,6 +19,7 @@ import java.util.NoSuchElementException;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.verify;
@@ -33,7 +35,7 @@ class AccountFeignAdapterTest {
     private AccountFeignAdapter accountFeignAdapter;
 
     @Test
-    void shouldVerifyLoggedUserAndReturnSessionWithIdFullNameAndRawToken() {
+    void shouldVerifyLoggedUserAndReturnSessionWithIdFullNameRawTokenAndBaseCurrency() {
         // Arrange
         String userId = UUID.randomUUID().toString();
         String bearerToken = "Bearer jwt-token-123";
@@ -42,6 +44,7 @@ class AccountFeignAdapterTest {
         responseDto.setFullName("Esteban Morales");
         responseDto.setEmail("esteban@finance.com");
         responseDto.setIsActive(true);
+        responseDto.setBaseCurrency(" cop ");
 
         when(accountFeignClient.getUserById(userId, "Bearer jwt-token-123")).thenReturn(responseDto);
 
@@ -53,25 +56,33 @@ class AccountFeignAdapterTest {
         assertEquals(userId, session.id());
         assertEquals("Esteban Morales", session.fullName());
         assertEquals("jwt-token-123", session.token());
+        assertEquals("COP", session.baseCurrency());
+        assertEquals("COP", session.resolvedBaseCurrency());
         assertEquals("esteban@finance.com", responseDto.getEmail());
         verify(accountFeignClient).getUserById(userId, "Bearer jwt-token-123");
     }
 
     @Test
-    void shouldNormalizeRawTokenWithoutBearerPrefixAndVerifyLoggedUser() {
+    void shouldNormalizeRawTokenWithoutBearerPrefixAndFallbackBaseCurrencyToUsdWhenBlank() throws Exception {
         // Arrange
         String userId = UUID.randomUUID().toString();
         String rawToken = "raw-jwt-token-456";
         AccountUserResponseDTO responseDto = new AccountUserResponseDTO(userId, "Esteban Morales", "esteban@finance.com", true);
+        ObjectMapper mapper = new ObjectMapper();
+        String jsonWithActiveAlias = "{\"id\":\"" + userId + "\",\"fullName\":\"Esteban\",\"active\":false,\"baseCurrency\":\"EUR\"}";
         when(accountFeignClient.getUserById(userId, "Bearer raw-jwt-token-456")).thenReturn(responseDto);
 
         // Act
         VerifiedUserSession session = accountFeignAdapter.verifyLoggedUser(" " + userId + " ", "  " + rawToken + "  ");
+        AccountUserResponseDTO parsedAliasDto = mapper.readValue(jsonWithActiveAlias, AccountUserResponseDTO.class);
 
         // Assert
         assertEquals(userId, session.id());
         assertEquals("Esteban Morales", session.fullName());
         assertEquals(rawToken, session.token());
+        assertEquals("USD", session.baseCurrency());
+        assertFalse(parsedAliasDto.getIsActive());
+        assertEquals("EUR", parsedAliasDto.getBaseCurrency());
     }
 
     @Test
@@ -119,7 +130,7 @@ class AccountFeignAdapterTest {
         // Arrange
         String userId = UUID.randomUUID().toString();
         String token = "Bearer active-token";
-        AccountUserResponseDTO inactiveResponse = new AccountUserResponseDTO(userId, "User", "u@f.com", false);
+        AccountUserResponseDTO inactiveResponse = new AccountUserResponseDTO(userId, "User", "u@f.com", false, "USD");
 
         when(accountFeignClient.getUserById(userId, token))
                 .thenReturn(null)
@@ -136,8 +147,8 @@ class AccountFeignAdapterTest {
         );
 
         // Assert
-        assertEquals("La cuenta de usuario está suspendida o inactiva", exNullResponse.getMessage());
-        assertEquals("La cuenta de usuario está suspendida o inactiva", exInactive.getMessage());
+        assertEquals("La sesión del usuario no pudo ser verificada", exNullResponse.getMessage());
+        assertEquals("Cuenta desactivada. Reactiva tu cuenta para operar en transacciones y metas", exInactive.getMessage());
     }
 
     @Test

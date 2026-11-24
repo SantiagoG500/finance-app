@@ -38,6 +38,7 @@ public class CreateTransaccionRequestDTO {
     @NotNull(message = "Frequency is required")
     private FrecuenciaType frequency;
 
+    @NotBlank(message = "La descripción de la transacción es obligatoria")
     private String description;
 
     @NotNull(message = "Transaction date is required")

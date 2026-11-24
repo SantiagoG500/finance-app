@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.util.Collections;
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.doNothing;
@@ -84,9 +85,9 @@ class AuthControllerTest {
     }
 
     @Test
-    void shouldReturn400BadRequestWhenRegisterValidationFails() throws Exception {
+    void shouldReturn400BadRequestWhenRegisterValidationFailsIncludingBlankFullName() throws Exception {
         // Arrange
-        RegisterRequestDTO invalidRequest = new RegisterRequestDTO("invalid-email", "123", "Name");
+        RegisterRequestDTO invalidRequest = new RegisterRequestDTO("valid@example.com", "password123", "   ");
 
         // Act
         ResultActions response = mockMvc.perform(post("/api/auth/register")
@@ -95,15 +96,17 @@ class AuthControllerTest {
 
         // Assert
         response.andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400));
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message", containsString("El nombre completo es obligatorio")))
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
     }
 
     @Test
-    void shouldLoginAndReturn200OkWithAuthorizationHeaderAndMessageBodyWhenCredentialsAreValid() {
+    void shouldLoginAndReturn200OkWithAuthorizationHeaderAndMessageBodyWhenCredentialsAreValidEvenIfInactive() {
         // Arrange
         UUID userId = UUID.randomUUID();
         LoginRequestDTO request = new LoginRequestDTO("login@example.com", "password123");
-        Usuario usuario = new Usuario(userId, "login@example.com", "hash", "Login User", null, "USD", true);
+        Usuario usuario = new Usuario(userId, "login@example.com", "hash", "Login User", null, "USD", false);
         AuthResult authResult = new AuthResult("jwt-login", usuario);
 
         when(authUseCase.login("login@example.com", "password123")).thenReturn(authResult);

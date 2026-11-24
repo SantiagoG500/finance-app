@@ -90,6 +90,36 @@ class InMemoryTokenBlacklistAdapterTest {
     }
 
     @Test
+    void shouldRotateAndBlacklistPreviousActiveSessionTokenWhenReLoggingInWithoutLogout() {
+        // Arrange
+        String email = "rotate@finance.com";
+        String oldToken = "jwt.old.session";
+        String rotatedToken = "jwt.new.session";
+        String directOverwriteToken = "jwt.direct.overwrite";
+        Instant expiresAt = Instant.now().plusSeconds(3600);
+
+        // Act
+        blacklistAdapter.registerActiveSession(email, oldToken, expiresAt);
+        blacklistAdapter.revokeActiveSessionByEmail("  ROTATE@finance.com ");
+        blacklistAdapter.registerActiveSession(email, rotatedToken, expiresAt);
+        boolean oldRevoked = blacklistAdapter.isTokenRevoked(oldToken);
+        boolean rotatedRevokedBeforeOverwrite = blacklistAdapter.isTokenRevoked(rotatedToken);
+        blacklistAdapter.registerActiveSession(email, directOverwriteToken, expiresAt);
+        boolean rotatedRevokedAfterOverwrite = blacklistAdapter.isTokenRevoked(rotatedToken);
+        boolean directOverwriteRevoked = blacklistAdapter.isTokenRevoked(directOverwriteToken);
+        blacklistAdapter.revokeActiveSessionByEmail(null);
+        blacklistAdapter.revokeActiveSessionByEmail("   ");
+        blacklistAdapter.revokeActiveSessionByEmail("nonexistent@finance.com");
+
+        // Assert
+        assertTrue(oldRevoked);
+        assertFalse(rotatedRevokedBeforeOverwrite);
+        assertTrue(rotatedRevokedAfterOverwrite);
+        assertFalse(directOverwriteRevoked);
+        assertTrue(blacklistAdapter.hasActiveSession(email));
+    }
+
+    @Test
     void shouldHandleInvalidOrExpiredActiveSessionsGracefully() throws InterruptedException {
         // Arrange
         String shortSessionEmail = "short@finance.com";

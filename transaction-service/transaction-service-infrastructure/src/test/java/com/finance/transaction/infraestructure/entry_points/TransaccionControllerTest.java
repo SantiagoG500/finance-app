@@ -37,6 +37,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
@@ -143,6 +144,31 @@ class TransaccionControllerTest {
     }
 
     @Test
+    void shouldReturn400BadRequestWhenDescriptionIsBlankOnSaveTransaction() throws Exception {
+        // Arrange
+        String catId = UUID.randomUUID().toString();
+        CreateTransaccionRequestDTO missingDescriptionRequest = new CreateTransaccionRequestDTO(
+                catId,
+                new BigDecimal("150.00"),
+                "USD",
+                TransaccionType.EXPENSE,
+                FrecuenciaType.ONE_TIME,
+                "   ",
+                LocalDate.now()
+        );
+
+        // Act
+        ResultActions response = mockMvc.perform(post("/api/v1/finances/save")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(missingDescriptionRequest)));
+
+        // Assert
+        response.andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message", containsString("La descripción de la transacción es obligatoria")));
+    }
+
+    @Test
     void shouldGetTransactionByIdAndReturn200OkWithUserIdWhenFound() throws Exception {
         // Arrange
         String txId = UUID.randomUUID().toString();
@@ -170,6 +196,7 @@ class TransaccionControllerTest {
         String missingId = UUID.randomUUID().toString();
         String unauthorizedId = UUID.randomUUID().toString();
         String forbiddenId = UUID.randomUUID().toString();
+        String deactivatedId = UUID.randomUUID().toString();
         String conflictId = UUID.randomUUID().toString();
 
         when(transaccionUseCase.obtenerTransaccion(eq(missingId), eq(userId), any())).thenReturn(null);
@@ -177,6 +204,8 @@ class TransaccionControllerTest {
                 .thenThrow(new SecurityException("Sesión expirada"));
         when(transaccionUseCase.obtenerTransaccion(eq(forbiddenId), eq(userId), any()))
                 .thenThrow(new AccessDeniedException("Acceso denegado"));
+        when(transaccionUseCase.obtenerTransaccion(eq(deactivatedId), eq(userId), any()))
+                .thenThrow(new IllegalStateException("Cuenta desactivada. Reactiva tu cuenta para operar en transacciones y metas"));
         when(transaccionUseCase.obtenerTransaccion(eq(conflictId), eq(userId), any()))
                 .thenThrow(new DataIntegrityViolationException("Constraint"));
 
@@ -184,6 +213,7 @@ class TransaccionControllerTest {
         ResultActions notFoundRes = mockMvc.perform(get("/api/v1/finances/get/{id}", missingId));
         ResultActions unauthorizedRes = mockMvc.perform(get("/api/v1/finances/get/{id}", unauthorizedId));
         ResultActions forbiddenRes = mockMvc.perform(get("/api/v1/finances/get/{id}", forbiddenId));
+        ResultActions deactivatedRes = mockMvc.perform(get("/api/v1/finances/get/{id}", deactivatedId));
         ResultActions conflictRes = mockMvc.perform(get("/api/v1/finances/get/{id}", conflictId));
 
         // Assert
@@ -194,6 +224,9 @@ class TransaccionControllerTest {
                 .andExpect(jsonPath("$.status").value(401));
         forbiddenRes.andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.status").value(403));
+        deactivatedRes.andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.message").value("Cuenta desactivada. Reactiva tu cuenta para operar en transacciones y metas"));
         conflictRes.andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409));
     }

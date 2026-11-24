@@ -80,32 +80,13 @@ public class ProyeccionesUseCase {
         this.categoriaGateway = categoriaGateway;
     }
 
-    public static final BigDecimal DIAS_POR_MES = new BigDecimal("30.41");
-    public static final BigDecimal SEMANAS_POR_MES = new BigDecimal("4.33");
-    public static final BigDecimal MESES_POR_ANO = new BigDecimal("12");
     public static final int DECIMAL_SCALE = 2;
     public static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
     public static final String CATEGORIA_SIN_ASIGNAR = "Sin categoría";
+    public static final String DEFAULT_BASE_CURRENCY = "USD";
 
-    // 1. Normalización Mensual (Monthly Normalization)
     public BigDecimal normalizarMontoMensual(BigDecimal monto, FrecuenciaType frecuencia) {
-        if (monto == null || frecuencia == null) {
-            return BigDecimal.ZERO.setScale(DECIMAL_SCALE, ROUNDING_MODE);
-        }
-
-        switch (frecuencia) {
-            case DAILY:
-                return monto.multiply(DIAS_POR_MES).setScale(DECIMAL_SCALE, ROUNDING_MODE);
-            case WEEKLY:
-                return monto.multiply(SEMANAS_POR_MES).setScale(DECIMAL_SCALE, ROUNDING_MODE);
-            case MONTHLY:
-                return monto.setScale(DECIMAL_SCALE, ROUNDING_MODE);
-            case YEARLY:
-                return monto.divide(MESES_POR_ANO, DECIMAL_SCALE, ROUNDING_MODE);
-            case ONE_TIME:
-            default:
-                return BigDecimal.ZERO.setScale(DECIMAL_SCALE, ROUNDING_MODE);
-        }
+        return FrecuenciaType.normalizarMontoMensual(monto, frecuencia);
     }
 
     public BigDecimal normalizarMontoMensual(BigDecimal monto, String frecuencia) {
@@ -120,14 +101,12 @@ public class ProyeccionesUseCase {
         }
     }
 
-    // 2. Consolidación de Balance (Balance Consolidation)
     public BigDecimal calcularIngresosMensuales(List<Transaccion> transacciones) {
         if (transacciones == null || transacciones.isEmpty()) {
             return BigDecimal.ZERO.setScale(DECIMAL_SCALE, ROUNDING_MODE);
         }
-        String referenceCurrency = resolveReferenceCurrency(transacciones, null);
-        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(transacciones, null, referenceCurrency);
-        return calcularIngresosMensuales(transacciones, referenceCurrency, ratesCache);
+        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(transacciones, null, DEFAULT_BASE_CURRENCY);
+        return calcularIngresosMensuales(transacciones, DEFAULT_BASE_CURRENCY, ratesCache);
     }
 
     private BigDecimal calcularIngresosMensuales(
@@ -139,9 +118,9 @@ public class ProyeccionesUseCase {
             return BigDecimal.ZERO.setScale(DECIMAL_SCALE, ROUNDING_MODE);
         }
         return transacciones.stream()
-                .filter(t -> t != null && t.getType() == TransaccionType.INCOME)
+                .filter(t -> t != null && t.getAmount() != null && t.getType() == TransaccionType.INCOME)
                 .map(t -> convertirMontoAMonedaReferencia(
-                        normalizarMontoMensual(t.getAmount(), t.getFrequency()),
+                        normalizarMontoTransaccion(t),
                         t.getCurrency(),
                         referenceCurrency,
                         ratesCache
@@ -154,9 +133,8 @@ public class ProyeccionesUseCase {
         if (transacciones == null || transacciones.isEmpty()) {
             return BigDecimal.ZERO.setScale(DECIMAL_SCALE, ROUNDING_MODE);
         }
-        String referenceCurrency = resolveReferenceCurrency(transacciones, null);
-        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(transacciones, null, referenceCurrency);
-        return calcularGastosMensuales(transacciones, referenceCurrency, ratesCache);
+        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(transacciones, null, DEFAULT_BASE_CURRENCY);
+        return calcularGastosMensuales(transacciones, DEFAULT_BASE_CURRENCY, ratesCache);
     }
 
     private BigDecimal calcularGastosMensuales(
@@ -168,9 +146,9 @@ public class ProyeccionesUseCase {
             return BigDecimal.ZERO.setScale(DECIMAL_SCALE, ROUNDING_MODE);
         }
         return transacciones.stream()
-                .filter(t -> t != null && t.getType() == TransaccionType.EXPENSE)
+                .filter(t -> t != null && t.getAmount() != null && t.getType() == TransaccionType.EXPENSE)
                 .map(t -> convertirMontoAMonedaReferencia(
-                        normalizarMontoMensual(t.getAmount(), t.getFrequency()),
+                        normalizarMontoTransaccion(t),
                         t.getCurrency(),
                         referenceCurrency,
                         ratesCache
@@ -185,16 +163,20 @@ public class ProyeccionesUseCase {
 
     public BigDecimal calcularBalanceNeto(String externalUserId, String bearerToken) {
         validarExternalUserId(externalUserId);
-        verificarSesionUsuario(externalUserId, bearerToken);
+        String baseCurrency = verificarSesionUsuario(externalUserId, bearerToken);
         List<Transaccion> transacciones = tGateway.obtenerTransaccionesPorUsuario(externalUserId);
-        return calcularBalanceNeto(transacciones);
+        return calcularBalanceNeto(transacciones, baseCurrency);
     }
 
     public BigDecimal calcularBalanceNeto(List<Transaccion> transacciones) {
-        String referenceCurrency = resolveReferenceCurrency(transacciones, null);
-        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(transacciones, null, referenceCurrency);
-        BigDecimal ingresos = calcularIngresosMensuales(transacciones, referenceCurrency, ratesCache);
-        BigDecimal gastos = calcularGastosMensuales(transacciones, referenceCurrency, ratesCache);
+        return calcularBalanceNeto(transacciones, DEFAULT_BASE_CURRENCY);
+    }
+
+    public BigDecimal calcularBalanceNeto(List<Transaccion> transacciones, String baseCurrency) {
+        String normalizedBase = normalizeBaseCurrency(baseCurrency);
+        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(transacciones, null, normalizedBase);
+        BigDecimal ingresos = calcularIngresosMensuales(transacciones, normalizedBase, ratesCache);
+        BigDecimal gastos = calcularGastosMensuales(transacciones, normalizedBase, ratesCache);
         return ingresos.subtract(gastos).setScale(DECIMAL_SCALE, ROUNDING_MODE);
     }
 
@@ -202,9 +184,8 @@ public class ProyeccionesUseCase {
         if (metas == null || metas.isEmpty()) {
             return BigDecimal.ZERO.setScale(DECIMAL_SCALE, ROUNDING_MODE);
         }
-        String referenceCurrency = resolveReferenceCurrency(null, metas);
-        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(null, metas, referenceCurrency);
-        return calcularCompromisoAhorroMensual(metas, referenceCurrency, ratesCache);
+        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(null, metas, DEFAULT_BASE_CURRENCY);
+        return calcularCompromisoAhorroMensual(metas, DEFAULT_BASE_CURRENCY, ratesCache);
     }
 
     private BigDecimal calcularCompromisoAhorroMensual(
@@ -218,7 +199,7 @@ public class ProyeccionesUseCase {
         return metas.stream()
                 .filter(m -> m != null && m.getMonthlyContribution() != null && m.getMonthlyContribution().compareTo(BigDecimal.ZERO) > 0)
                 .map(m -> convertirMontoAMonedaReferencia(
-                        m.getMonthlyContribution(),
+                        m.getMonthlyContribution().setScale(DECIMAL_SCALE, ROUNDING_MODE),
                         m.getCurrency(),
                         referenceCurrency,
                         ratesCache
@@ -231,9 +212,8 @@ public class ProyeccionesUseCase {
         if (transacciones == null || transacciones.isEmpty()) {
             return BigDecimal.ZERO.setScale(DECIMAL_SCALE, ROUNDING_MODE);
         }
-        String referenceCurrency = resolveReferenceCurrency(transacciones, null);
-        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(transacciones, null, referenceCurrency);
-        return calcularSaldoInicialAcumulado(transacciones, referenceCurrency, ratesCache);
+        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(transacciones, null, DEFAULT_BASE_CURRENCY);
+        return calcularSaldoInicialAcumulado(transacciones, DEFAULT_BASE_CURRENCY, ratesCache);
     }
 
     private BigDecimal calcularSaldoInicialAcumulado(
@@ -245,10 +225,10 @@ public class ProyeccionesUseCase {
             return BigDecimal.ZERO.setScale(DECIMAL_SCALE, ROUNDING_MODE);
         }
         return transacciones.stream()
-                .filter(t -> t != null && t.getFrequency() == FrecuenciaType.ONE_TIME && t.getAmount() != null)
+                .filter(t -> t != null && isOneTime(t) && t.getAmount() != null && t.getType() != null)
                 .map(t -> {
                     BigDecimal converted = convertirMontoAMonedaReferencia(
-                            t.getAmount(),
+                            normalizarMontoTransaccion(t),
                             t.getCurrency(),
                             referenceCurrency,
                             ratesCache
@@ -259,7 +239,29 @@ public class ProyeccionesUseCase {
                 .setScale(DECIMAL_SCALE, ROUNDING_MODE);
     }
 
-    // 3. Proyección a n Meses (Projections)
+    private BigDecimal calcularBalanceRecurrenteMensual(
+            List<Transaccion> transacciones,
+            String referenceCurrency,
+            Map<String, BigDecimal> ratesCache
+    ) {
+        if (transacciones == null || transacciones.isEmpty()) {
+            return BigDecimal.ZERO.setScale(DECIMAL_SCALE, ROUNDING_MODE);
+        }
+        return transacciones.stream()
+                .filter(t -> t != null && !isOneTime(t) && t.getAmount() != null && t.getType() != null)
+                .map(t -> {
+                    BigDecimal converted = convertirMontoAMonedaReferencia(
+                            normalizarMontoTransaccion(t),
+                            t.getCurrency(),
+                            referenceCurrency,
+                            ratesCache
+                    );
+                    return t.getType() == TransaccionType.INCOME ? converted : converted.negate();
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(DECIMAL_SCALE, ROUNDING_MODE);
+    }
+
     public BigDecimal proyectarSaldo(String externalUserId, int meses) {
         return proyectarSaldo(externalUserId, meses, null, null);
     }
@@ -270,15 +272,12 @@ public class ProyeccionesUseCase {
 
     public BigDecimal proyectarSaldo(String externalUserId, int meses, String userEmail, String bearerToken) {
         validarExternalUserId(externalUserId);
-        verificarSesionUsuario(externalUserId, bearerToken);
+        String baseCurrency = verificarSesionUsuario(externalUserId, bearerToken);
         List<Transaccion> transacciones = tGateway.obtenerTransaccionesPorUsuario(externalUserId);
-        String referenceCurrency = resolveReferenceCurrency(transacciones, null);
-        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(transacciones, null, referenceCurrency);
-        BigDecimal saldoInicial = calcularSaldoInicialAcumulado(transacciones, referenceCurrency, ratesCache);
-        BigDecimal ingresos = calcularIngresosMensuales(transacciones, referenceCurrency, ratesCache);
-        BigDecimal gastos = calcularGastosMensuales(transacciones, referenceCurrency, ratesCache);
-        BigDecimal balanceNeto = ingresos.subtract(gastos).setScale(DECIMAL_SCALE, ROUNDING_MODE);
-        BigDecimal saldoProyectado = proyectarSaldo(saldoInicial, balanceNeto, meses);
+        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(transacciones, null, baseCurrency);
+        BigDecimal saldoInicial = calcularSaldoInicialAcumulado(transacciones, baseCurrency, ratesCache);
+        BigDecimal balanceRecurrente = calcularBalanceRecurrenteMensual(transacciones, baseCurrency, ratesCache);
+        BigDecimal saldoProyectado = proyectarSaldo(saldoInicial, balanceRecurrente, meses);
 
         if (notificationGateway != null
                 && userEmail != null
@@ -311,39 +310,45 @@ public class ProyeccionesUseCase {
 
     public ResumenFinanciero obtenerResumenFinanciero(String externalUserId, String bearerToken) {
         validarExternalUserId(externalUserId);
-        verificarSesionUsuario(externalUserId, bearerToken);
-        return proyectarSaldo(externalUserId);
+        String baseCurrency = verificarSesionUsuario(externalUserId, bearerToken);
+        return construirResumenFinanciero(externalUserId, baseCurrency);
     }
 
     public ResumenFinanciero proyectarSaldo(String externalUserId) {
         validarExternalUserId(externalUserId);
+        return construirResumenFinanciero(externalUserId, DEFAULT_BASE_CURRENCY);
+    }
+
+    private ResumenFinanciero construirResumenFinanciero(String externalUserId, String monedaBase) {
         List<Transaccion> transaccionesFromGateway = tGateway.obtenerTransaccionesPorUsuario(externalUserId);
         final List<Transaccion> transacciones = transaccionesFromGateway != null ? transaccionesFromGateway : Collections.emptyList();
 
         List<MetaAhorro> metasFromGateway = mGateway.obtenerMetasPorUsuario(externalUserId);
         final List<MetaAhorro> metas = metasFromGateway != null ? metasFromGateway : Collections.emptyList();
 
-        String moneda = resolveReferenceCurrency(transacciones, metas);
-        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(transacciones, metas, moneda);
+        String normalizedBase = normalizeBaseCurrency(monedaBase);
+        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(transacciones, metas, normalizedBase);
 
-        BigDecimal ingresosMensuales = calcularIngresosMensuales(transacciones, moneda, ratesCache);
-        BigDecimal gastosMensuales = calcularGastosMensuales(transacciones, moneda, ratesCache);
+        BigDecimal ingresosMensuales = calcularIngresosMensuales(transacciones, normalizedBase, ratesCache);
+        BigDecimal gastosMensuales = calcularGastosMensuales(transacciones, normalizedBase, ratesCache);
         BigDecimal balanceNetoMensual = ingresosMensuales.subtract(gastosMensuales).setScale(DECIMAL_SCALE, ROUNDING_MODE);
-        BigDecimal compromisoAhorroMensual = calcularCompromisoAhorroMensual(metas, moneda, ratesCache);
+        BigDecimal compromisoAhorroMensual = calcularCompromisoAhorroMensual(metas, normalizedBase, ratesCache);
         BigDecimal margenLibre = balanceNetoMensual.subtract(compromisoAhorroMensual).setScale(DECIMAL_SCALE, ROUNDING_MODE);
 
-        BigDecimal saldoInicial = calcularSaldoInicialAcumulado(transacciones, moneda, ratesCache);
-        BigDecimal proyeccion1Ano = proyectarSaldo(saldoInicial, balanceNetoMensual, 12);
+        BigDecimal saldoInicial = calcularSaldoInicialAcumulado(transacciones, normalizedBase, ratesCache);
+        BigDecimal balanceRecurrente = calcularBalanceRecurrenteMensual(transacciones, normalizedBase, ratesCache);
+        BigDecimal proyeccion1Ano = proyectarSaldo(saldoInicial, balanceRecurrente, 12);
         Map<String, BigDecimal> porCategoria = calcularDesglosePorCategoria(
                 externalUserId,
                 transacciones,
-                moneda,
+                normalizedBase,
                 ratesCache
         );
 
         ResumenFinanciero resumen = new ResumenFinanciero();
         resumen.setUsuarioId(externalUserId);
-        resumen.setMoneda(moneda);
+        resumen.setMoneda(normalizedBase);
+        resumen.setMonedaBase(normalizedBase);
         resumen.setIngresosMensuales(ingresosMensuales);
         resumen.setGastosMensuales(gastosMensuales);
         resumen.setBalanceNetoMensual(balanceNetoMensual);
@@ -380,7 +385,7 @@ public class ProyeccionesUseCase {
         }
 
         for (Transaccion t : transacciones) {
-            if (t == null || t.getAmount() == null) {
+            if (t == null || t.getAmount() == null || t.getType() == null) {
                 continue;
             }
             String categoryName = CATEGORIA_SIN_ASIGNAR;
@@ -390,14 +395,16 @@ public class ProyeccionesUseCase {
                     categoryName = resolvedName;
                 }
             }
+            String categoryKey = categoryName + " (" + t.getType().name() + ")";
+            BigDecimal monthlyAmount = normalizarMontoTransaccion(t);
             BigDecimal convertedAmount = convertirMontoAMonedaReferencia(
-                    t.getAmount().setScale(DECIMAL_SCALE, ROUNDING_MODE),
+                    monthlyAmount,
                     t.getCurrency(),
                     referenceCurrency,
                     ratesCache
             );
             porCategoria.merge(
-                    categoryName,
+                    categoryKey,
                     convertedAmount,
                     (current, added) -> current.add(added).setScale(DECIMAL_SCALE, ROUNDING_MODE)
             );
@@ -420,7 +427,7 @@ public class ProyeccionesUseCase {
 
         if (transacciones != null) {
             for (Transaccion t : transacciones) {
-                if (t != null && t.getCurrency() != null && !t.getCurrency().trim().isEmpty()) {
+                if (t != null && t.getAmount() != null && t.getCurrency() != null && !t.getCurrency().trim().isEmpty()) {
                     String normalizedSource = t.getCurrency().trim().toUpperCase();
                     if (!normalizedSource.equals(normalizedRef)) {
                         distinctCurrencies.add(normalizedSource);
@@ -430,7 +437,11 @@ public class ProyeccionesUseCase {
         }
         if (metas != null) {
             for (MetaAhorro m : metas) {
-                if (m != null && m.getCurrency() != null && !m.getCurrency().trim().isEmpty()) {
+                if (m != null
+                        && m.getMonthlyContribution() != null
+                        && m.getMonthlyContribution().compareTo(BigDecimal.ZERO) > 0
+                        && m.getCurrency() != null
+                        && !m.getCurrency().trim().isEmpty()) {
                     String normalizedSource = m.getCurrency().trim().toUpperCase();
                     if (!normalizedSource.equals(normalizedRef)) {
                         distinctCurrencies.add(normalizedSource);
@@ -441,38 +452,38 @@ public class ProyeccionesUseCase {
 
         for (String sourceCurrency : distinctCurrencies) {
             BigDecimal rate = exchangeRateGateway.getExchangeRate(sourceCurrency, normalizedRef);
-            if (rate != null && rate.compareTo(BigDecimal.ZERO) > 0) {
-                ratesCache.put(sourceCurrency, rate);
+            if (rate == null || rate.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Tasa de cambio no disponible para la moneda solicitada");
             }
+            ratesCache.put(sourceCurrency, rate);
         }
         return ratesCache;
     }
 
-    private void verificarSesionUsuario(String externalUserId, String bearerToken) {
+    private String verificarSesionUsuario(String externalUserId, String bearerToken) {
         if (accountVerificationGateway != null) {
             VerifiedUserSession session = accountVerificationGateway.verifyLoggedUser(externalUserId, bearerToken);
             if (session == null || session.id() == null || session.id().isBlank()) {
                 throw new IllegalStateException("La sesión del usuario no pudo ser verificada");
             }
+            return session.resolvedBaseCurrency();
         }
+        return DEFAULT_BASE_CURRENCY;
     }
 
-    private String resolveReferenceCurrency(List<Transaccion> transacciones, List<MetaAhorro> metas) {
-        if (transacciones != null) {
-            for (Transaccion t : transacciones) {
-                if (t != null && t.getCurrency() != null && !t.getCurrency().trim().isEmpty()) {
-                    return t.getCurrency().trim().toUpperCase();
-                }
-            }
-        }
-        if (metas != null) {
-            for (MetaAhorro m : metas) {
-                if (m != null && m.getCurrency() != null && !m.getCurrency().trim().isEmpty()) {
-                    return m.getCurrency().trim().toUpperCase();
-                }
-            }
-        }
-        return "USD";
+    private String normalizeBaseCurrency(String baseCurrency) {
+        return (baseCurrency == null || baseCurrency.trim().isEmpty())
+                ? DEFAULT_BASE_CURRENCY
+                : baseCurrency.trim().toUpperCase();
+    }
+
+    private boolean isOneTime(Transaccion t) {
+        return t.getFrequency() == null || t.getFrequency() == FrecuenciaType.ONE_TIME;
+    }
+
+    private BigDecimal normalizarMontoTransaccion(Transaccion t) {
+        FrecuenciaType effectiveFrequency = t.getFrequency() != null ? t.getFrequency() : FrecuenciaType.ONE_TIME;
+        return normalizarMontoMensual(t.getAmount(), effectiveFrequency);
     }
 
     private BigDecimal convertirMontoAMonedaReferencia(
@@ -485,16 +496,16 @@ public class ProyeccionesUseCase {
             return BigDecimal.ZERO.setScale(DECIMAL_SCALE, ROUNDING_MODE);
         }
         if (sourceCurrency == null || sourceCurrency.trim().isEmpty() || referenceCurrency == null || referenceCurrency.trim().isEmpty()) {
-            return monto;
+            return monto.setScale(DECIMAL_SCALE, ROUNDING_MODE);
         }
         String normalizedSource = sourceCurrency.trim().toUpperCase();
         String normalizedRef = referenceCurrency.trim().toUpperCase();
         if (normalizedSource.equals(normalizedRef) || exchangeRateGateway == null) {
-            return monto;
+            return monto.setScale(DECIMAL_SCALE, ROUNDING_MODE);
         }
         BigDecimal rate = ratesCache != null ? ratesCache.get(normalizedSource) : null;
         if (rate == null || rate.compareTo(BigDecimal.ZERO) <= 0) {
-            return monto;
+            throw new IllegalArgumentException("Tasa de cambio no disponible para la moneda solicitada");
         }
         return monto.multiply(rate).setScale(DECIMAL_SCALE, ROUNDING_MODE);
     }

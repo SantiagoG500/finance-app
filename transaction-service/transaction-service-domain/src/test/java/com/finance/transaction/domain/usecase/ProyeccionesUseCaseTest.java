@@ -1,6 +1,8 @@
 package com.finance.transaction.domain.usecase;
 
 import com.finance.transaction.domain.model.Categoria;
+import com.finance.transaction.domain.model.ConvertedBalance;
+import com.finance.transaction.domain.model.CurrencyMetadata;
 import com.finance.transaction.domain.model.MetaAhorro;
 import com.finance.transaction.domain.model.ResumenFinanciero;
 import com.finance.transaction.domain.model.Transaccion;
@@ -9,6 +11,7 @@ import com.finance.transaction.domain.model.enumns.FrecuenciaType;
 import com.finance.transaction.domain.model.enumns.TransaccionType;
 import com.finance.transaction.domain.model.gateway.AccountVerificationGateway;
 import com.finance.transaction.domain.model.gateway.CategoriaGateway;
+import com.finance.transaction.domain.model.gateway.CurrencyMetadataGateway;
 import com.finance.transaction.domain.model.gateway.ExchangeRateGateway;
 import com.finance.transaction.domain.model.gateway.MetaAhorrosGateway;
 import com.finance.transaction.domain.model.gateway.NotificationGateway;
@@ -59,6 +62,9 @@ class ProyeccionesUseCaseTest {
     @Mock
     private CategoriaGateway categoriaGateway;
 
+    @Mock
+    private CurrencyMetadataGateway currencyMetadataGateway;
+
     private ProyeccionesUseCase proyeccionesUseCase;
 
     @BeforeEach
@@ -72,7 +78,7 @@ class ProyeccionesUseCaseTest {
                 categoriaGateway
         );
         lenient().when(accountVerificationGateway.verifyLoggedUser(anyString(), any()))
-                .thenAnswer(inv -> new VerifiedUserSession(inv.getArgument(0), "Test User", "jwt-token"));
+                .thenAnswer(inv -> new VerifiedUserSession(inv.getArgument(0), "Test User", "jwt-token", "USD"));
     }
 
     @Test
@@ -89,18 +95,20 @@ class ProyeccionesUseCaseTest {
         BigDecimal fromMonthly = proyeccionesUseCase.normalizarMontoMensual(monthlyAmount, FrecuenciaType.MONTHLY);
         BigDecimal fromYearly = proyeccionesUseCase.normalizarMontoMensual(yearlyAmount, FrecuenciaType.YEARLY);
         BigDecimal fromOneTime = proyeccionesUseCase.normalizarMontoMensual(monthlyAmount, FrecuenciaType.ONE_TIME);
-        BigDecimal fromNull = proyeccionesUseCase.normalizarMontoMensual(null, FrecuenciaType.MONTHLY);
+        BigDecimal fromNullAmount = proyeccionesUseCase.normalizarMontoMensual(null, FrecuenciaType.MONTHLY);
+        BigDecimal fromNullFrequency = proyeccionesUseCase.normalizarMontoMensual(monthlyAmount, (FrecuenciaType) null);
         BigDecimal fromStringValid = proyeccionesUseCase.normalizarMontoMensual(monthlyAmount, " monthly ");
         BigDecimal fromStringInvalid = proyeccionesUseCase.normalizarMontoMensual(monthlyAmount, "INVALID");
         BigDecimal fromStringBlank = proyeccionesUseCase.normalizarMontoMensual(monthlyAmount, "  ");
 
         // Assert
-        assertEquals(new BigDecimal("304.10"), fromDaily);
-        assertEquals(new BigDecimal("433.00"), fromWeekly);
+        assertEquals(new BigDecimal("300.00"), fromDaily);
+        assertEquals(new BigDecimal("400.00"), fromWeekly);
         assertEquals(new BigDecimal("500.00"), fromMonthly);
         assertEquals(new BigDecimal("100.00"), fromYearly);
-        assertEquals(new BigDecimal("0.00"), fromOneTime);
-        assertEquals(new BigDecimal("0.00"), fromNull);
+        assertEquals(new BigDecimal("500.00"), fromOneTime);
+        assertEquals(new BigDecimal("0.00"), fromNullAmount);
+        assertEquals(new BigDecimal("0.00"), fromNullFrequency);
         assertEquals(new BigDecimal("500.00"), fromStringValid);
         assertEquals(new BigDecimal("0.00"), fromStringInvalid);
         assertEquals(new BigDecimal("0.00"), fromStringBlank);
@@ -123,16 +131,18 @@ class ProyeccionesUseCaseTest {
         BigDecimal incomesEmpty = proyeccionesUseCase.calcularIngresosMensuales(Collections.emptyList());
         BigDecimal expenses = proyeccionesUseCase.calcularGastosMensuales(transacciones);
         BigDecimal expensesEmpty = proyeccionesUseCase.calcularGastosMensuales(Collections.emptyList());
+        BigDecimal netFromList = proyeccionesUseCase.calcularBalanceNeto(transacciones);
         BigDecimal savings = proyeccionesUseCase.calcularCompromisoAhorroMensual(metas);
         BigDecimal savingsEmpty = proyeccionesUseCase.calcularCompromisoAhorroMensual(Collections.emptyList());
         BigDecimal initialBalance = proyeccionesUseCase.calcularSaldoInicialAcumulado(transacciones);
         BigDecimal initialEmpty = proyeccionesUseCase.calcularSaldoInicialAcumulado(Collections.emptyList());
 
         // Assert
-        assertEquals(new BigDecimal("1000.00"), incomes);
+        assertEquals(new BigDecimal("1500.00"), incomes);
         assertEquals(new BigDecimal("0.00"), incomesEmpty);
-        assertEquals(new BigDecimal("300.00"), expenses);
+        assertEquals(new BigDecimal("400.00"), expenses);
         assertEquals(new BigDecimal("0.00"), expensesEmpty);
+        assertEquals(new BigDecimal("1100.00"), netFromList);
         assertEquals(new BigDecimal("250.00"), savings);
         assertEquals(new BigDecimal("0.00"), savingsEmpty);
         assertEquals(new BigDecimal("400.00"), initialBalance);
@@ -174,6 +184,8 @@ class ProyeccionesUseCaseTest {
                 new Categoria(catComidaId, userId, "Alimentación", TransaccionType.EXPENSE)
         );
 
+        when(accountVerificationGateway.verifyLoggedUser(userId, "Bearer jwt-token"))
+                .thenReturn(new VerifiedUserSession(userId, "Test User", "jwt-token", "COP"));
         when(transaccionGateway.obtenerTransaccionesPorUsuario(userId)).thenReturn(transacciones);
         when(metaAhorrosGateway.obtenerMetasPorUsuario(userId)).thenReturn(List.of(goal1, goal2));
         when(categoriaGateway.obtenerCategoriasPorUsuario(userId)).thenReturn(categorias);
@@ -184,20 +196,71 @@ class ProyeccionesUseCaseTest {
         // Assert
         assertEquals(userId, resumen.getUsuarioId());
         assertEquals("COP", resumen.getMoneda());
-        assertEquals(new BigDecimal("3000.00"), resumen.getIngresosMensuales());
-        assertEquals(new BigDecimal("837.10"), resumen.getGastosMensuales());
-        assertEquals(new BigDecimal("2162.90"), resumen.getBalanceNetoMensual());
+        assertEquals("COP", resumen.getMonedaBase());
+        assertEquals(new BigDecimal("4000.00"), resumen.getIngresosMensuales());
+        assertEquals(new BigDecimal("1000.00"), resumen.getGastosMensuales());
+        assertEquals(new BigDecimal("3000.00"), resumen.getBalanceNetoMensual());
         assertEquals(new BigDecimal("300.00"), resumen.getCompromisoAhorroMensual());
-        assertEquals(new BigDecimal("1862.90"), resumen.getMargenLibre());
-        assertEquals(new BigDecimal("26754.80"), resumen.getProyeccion1Ano());
+        assertEquals(new BigDecimal("2700.00"), resumen.getMargenLibre());
+        assertEquals(new BigDecimal("27200.00"), resumen.getProyeccion1Ano());
         assertNotNull(resumen.getPorCategoria());
-        assertEquals(new BigDecimal("4000.00"), resumen.getPorCategoria().get("Salario"));
-        assertEquals(new BigDecimal("300.00"), resumen.getPorCategoria().get("Alimentación"));
-        assertEquals(new BigDecimal("1210.00"), resumen.getPorCategoria().get("Sin categoría"));
+        assertEquals(new BigDecimal("4000.00"), resumen.getPorCategoria().get("Salario (INCOME)"));
+        assertEquals(new BigDecimal("600.00"), resumen.getPorCategoria().get("Alimentación (EXPENSE)"));
+        assertEquals(new BigDecimal("400.00"), resumen.getPorCategoria().get("Sin categoría (EXPENSE)"));
         verify(accountVerificationGateway).verifyLoggedUser(userId, "Bearer jwt-token");
         verify(transaccionGateway, times(1)).obtenerTransaccionesPorUsuario(userId);
         verify(metaAhorrosGateway, times(1)).obtenerMetasPorUsuario(userId);
         verify(categoriaGateway, times(1)).obtenerCategoriasPorUsuario(userId);
+    }
+
+    @Test
+    void shouldMaintainMathematicalCoherenceAcrossBalanceBalanceConvertSummaryAndProjections() {
+        // Arrange
+        String userId = UUID.randomUUID().toString();
+        String catFreelanceId = UUID.randomUUID().toString();
+        DivisasUseCase divisasUseCase = new DivisasUseCase(
+                transaccionGateway,
+                exchangeRateGateway,
+                currencyMetadataGateway,
+                accountVerificationGateway
+        );
+        Transaccion usdMonthlyIncome = buildTransaction(userId, new BigDecimal("1000.00"), "USD", TransaccionType.INCOME, FrecuenciaType.MONTHLY);
+        usdMonthlyIncome.setCategoryId(catFreelanceId);
+        Transaccion copOneTimeIncome = buildTransaction(userId, new BigDecimal("2000000.00"), "COP", TransaccionType.INCOME, FrecuenciaType.ONE_TIME);
+        copOneTimeIncome.setCategoryId(null);
+        Transaccion eurWeeklyExpense = buildTransaction(userId, new BigDecimal("50.00"), "EUR", TransaccionType.EXPENSE, FrecuenciaType.WEEKLY);
+        eurWeeklyExpense.setCategoryId(null);
+
+        when(accountVerificationGateway.verifyLoggedUser(userId, "Bearer jwt-token"))
+                .thenReturn(new VerifiedUserSession(userId, "Test User", "jwt-token", "USD"));
+        when(transaccionGateway.obtenerTransaccionesPorUsuario(userId))
+                .thenReturn(List.of(usdMonthlyIncome, copOneTimeIncome, eurWeeklyExpense));
+        when(metaAhorrosGateway.obtenerMetasPorUsuario(userId)).thenReturn(Collections.emptyList());
+        when(categoriaGateway.obtenerCategoriasPorUsuario(userId)).thenReturn(List.of(
+                new Categoria(catFreelanceId, userId, "Freelance", TransaccionType.INCOME)
+        ));
+        when(exchangeRateGateway.getExchangeRate("COP", "USD")).thenReturn(new BigDecimal("0.00025"));
+        when(exchangeRateGateway.getExchangeRate("EUR", "USD")).thenReturn(new BigDecimal("1.10"));
+        when(currencyMetadataGateway.getCurrencyMetadata("USD"))
+                .thenReturn(new CurrencyMetadata("USD", "United States dollar", "$", List.of("United States")));
+
+        // Act
+        BigDecimal balanceNeto = proyeccionesUseCase.calcularBalanceNeto(userId, "Bearer jwt-token");
+        ConvertedBalance convertedBalance = divisasUseCase.convertirBalanceMensual(userId, "USD", "Bearer jwt-token");
+        ResumenFinanciero resumen = proyeccionesUseCase.obtenerResumenFinanciero(userId, "Bearer jwt-token");
+        BigDecimal proyeccionMes1 = proyeccionesUseCase.proyectarSaldo(userId, 1, "user@finance.com", "Bearer jwt-token");
+        BigDecimal proyeccionMes6 = proyeccionesUseCase.proyectarSaldo(userId, 6, "user@finance.com", "Bearer jwt-token");
+
+        // Assert
+        assertEquals(new BigDecimal("1280.00"), balanceNeto);
+        assertEquals(balanceNeto, convertedBalance.convertedBalance());
+        assertEquals(balanceNeto, resumen.getBalanceNetoMensual());
+        assertEquals("USD", resumen.getMonedaBase());
+        assertEquals(new BigDecimal("1000.00"), resumen.getPorCategoria().get("Freelance (INCOME)"));
+        assertEquals(new BigDecimal("500.00"), resumen.getPorCategoria().get("Sin categoría (INCOME)"));
+        assertEquals(new BigDecimal("220.00"), resumen.getPorCategoria().get("Sin categoría (EXPENSE)"));
+        assertEquals(new BigDecimal("1280.00"), proyeccionMes1);
+        assertEquals(new BigDecimal("5180.00"), proyeccionMes6);
     }
 
     @Test
@@ -246,6 +309,7 @@ class ProyeccionesUseCaseTest {
 
         // Assert
         assertEquals("USD", resumen.getMoneda());
+        assertEquals("USD", resumen.getMonedaBase());
         assertEquals(new BigDecimal("1375.00"), resumen.getIngresosMensuales());
         assertEquals(new BigDecimal("220.00"), resumen.getGastosMensuales());
         assertEquals(new BigDecimal("1155.00"), resumen.getBalanceNetoMensual());
@@ -257,11 +321,34 @@ class ProyeccionesUseCaseTest {
     }
 
     @Test
-    void shouldCalculateFinancialSummaryWithEmptyOrNullListsAndFallbackCurrency() {
+    void shouldThrowIllegalArgumentExceptionWhenForeignExchangeRateIsUnavailable() {
+        // Arrange
+        String userId = UUID.randomUUID().toString();
+        List<Transaccion> transacciones = List.of(
+                buildTransaction(userId, new BigDecimal("100000.00"), "COP", TransaccionType.INCOME, FrecuenciaType.MONTHLY)
+        );
+        when(transaccionGateway.obtenerTransaccionesPorUsuario(userId)).thenReturn(transacciones);
+        when(exchangeRateGateway.getExchangeRate("COP", "USD")).thenReturn(BigDecimal.ZERO);
+
+        // Act
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> proyeccionesUseCase.calcularBalanceNeto(userId)
+        );
+
+        // Assert
+        assertEquals("Tasa de cambio no disponible para la moneda solicitada", exception.getMessage());
+    }
+
+    @Test
+    void shouldCalculateFinancialSummaryWithEmptyOrNullListsAndRealUserBaseCurrencyOrDefaultUsd() {
         // Arrange
         String userId = UUID.randomUUID().toString();
         MetaAhorro euroGoal = buildGoal(userId, new BigDecimal("150.00"), "EUR");
 
+        when(accountVerificationGateway.verifyLoggedUser(userId, null))
+                .thenReturn(new VerifiedUserSession(userId, "User", "jwt", "EUR"))
+                .thenReturn(new VerifiedUserSession(userId, "User", "jwt", "  "));
         when(transaccionGateway.obtenerTransaccionesPorUsuario(userId))
                 .thenReturn(null)
                 .thenReturn(Collections.emptyList());
@@ -270,14 +357,19 @@ class ProyeccionesUseCaseTest {
                 .thenReturn(null);
 
         // Act
-        ResumenFinanciero resumenWithGoalCurrency = proyeccionesUseCase.obtenerResumenFinanciero(userId);
+        ResumenFinanciero resumenWithConfiguredEur = proyeccionesUseCase.obtenerResumenFinanciero(userId);
         ResumenFinanciero resumenWithDefaultUsd = proyeccionesUseCase.obtenerResumenFinanciero(userId);
+        ResumenFinanciero resumenLegacyOverload = proyeccionesUseCase.proyectarSaldo(userId);
 
         // Assert
-        assertEquals("EUR", resumenWithGoalCurrency.getMoneda());
-        assertEquals(new BigDecimal("0.00"), resumenWithGoalCurrency.getBalanceNetoMensual());
+        assertEquals("EUR", resumenWithConfiguredEur.getMoneda());
+        assertEquals("EUR", resumenWithConfiguredEur.getMonedaBase());
+        assertEquals(new BigDecimal("150.00"), resumenWithConfiguredEur.getCompromisoAhorroMensual());
+        assertEquals(new BigDecimal("0.00"), resumenWithConfiguredEur.getBalanceNetoMensual());
         assertEquals("USD", resumenWithDefaultUsd.getMoneda());
+        assertEquals("USD", resumenWithDefaultUsd.getMonedaBase());
         assertEquals(new BigDecimal("0.00"), resumenWithDefaultUsd.getCompromisoAhorroMensual());
+        assertEquals("USD", resumenLegacyOverload.getMonedaBase());
     }
 
     @Test

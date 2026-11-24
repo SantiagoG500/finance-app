@@ -64,12 +64,14 @@ public class UsuarioUseCase {
                                      Boolean isActive) {
         if (id == null
                 || email == null || email.isBlank()
-                || rawPassword == null || rawPassword.length() < 6
                 || fullName == null || fullName.isBlank()
                 || avatarUrl == null || avatarUrl.isBlank()
-                || baseCurrency == null || baseCurrency.isBlank()
-                || isActive == null) {
+                || baseCurrency == null || baseCurrency.isBlank()) {
             throw new IllegalArgumentException("Todos los campos del usuario son obligatorios para la actualización completa");
+        }
+
+        if (rawPassword != null && !rawPassword.isBlank() && rawPassword.length() < 6) {
+            throw new IllegalArgumentException("La contraseña debe tener al menos 6 caracteres");
         }
 
         String normalizedCurrency = baseCurrency.trim().toUpperCase();
@@ -88,16 +90,19 @@ public class UsuarioUseCase {
             throw new IllegalStateException("Ya existe una cuenta registrada con este correo electrónico");
         }
 
-        String encodedPassword = passwordEncoderGateway != null
-                ? passwordEncoderGateway.encode(rawPassword)
-                : rawPassword;
-
         existente.setEmail(normalizedEmail);
-        existente.setPasswordHash(encodedPassword);
+        if (rawPassword != null && !rawPassword.isBlank()) {
+            String encodedPassword = passwordEncoderGateway != null
+                    ? passwordEncoderGateway.encode(rawPassword)
+                    : rawPassword;
+            existente.setPasswordHash(encodedPassword);
+        }
         existente.setFullName(fullName.trim());
         existente.setAvatarUrl(avatarUrl.trim());
         existente.setBaseCurrency(normalizedCurrency);
-        existente.setIsActive(isActive);
+        if (isActive != null) {
+            existente.setIsActive(isActive);
+        }
 
         return uGateway.actualizarUsuario(existente);
     }

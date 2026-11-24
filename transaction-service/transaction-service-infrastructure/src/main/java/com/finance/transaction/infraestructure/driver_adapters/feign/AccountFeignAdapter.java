@@ -45,13 +45,20 @@ public class AccountFeignAdapter implements AccountVerificationGateway {
 
         try {
             AccountUserResponseDTO response = accountFeignClient.getUserById(userId.trim(), authHeader);
-            if (response == null || !Boolean.TRUE.equals(response.getIsActive())) {
-                throw new IllegalStateException("La cuenta de usuario está suspendida o inactiva");
+            if (response == null) {
+                throw new IllegalStateException("La sesión del usuario no pudo ser verificada");
             }
+            if (!Boolean.TRUE.equals(response.getIsActive())) {
+                throw new IllegalStateException("Cuenta desactivada. Reactiva tu cuenta para operar en transacciones y metas");
+            }
+            String resolvedBaseCurrency = (response.getBaseCurrency() == null || response.getBaseCurrency().isBlank())
+                    ? "USD"
+                    : response.getBaseCurrency().trim().toUpperCase();
             return new VerifiedUserSession(
                     response.getId(),
                     response.getFullName(),
-                    rawToken
+                    rawToken,
+                    resolvedBaseCurrency
             );
         } catch (FeignException.Unauthorized e) {
             log.warn("Sesión no autorizada o expirada en account-service para usuario {}: {}", userId, e.getMessage());

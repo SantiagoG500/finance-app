@@ -44,6 +44,7 @@ public class MetaAhorrosAdapter implements MetaAhorrosGateway {
     }
 
     @Override
+    @Transactional
     public MetaAhorro actualizarMetaAhorros(MetaAhorro metaAhorro) {
         UUID goalUuid = parseUuid(metaAhorro.getId(), "ID de meta de ahorro");
         UUID userUuid = parseUuid(metaAhorro.getExternalUserId(), "ID de usuario");

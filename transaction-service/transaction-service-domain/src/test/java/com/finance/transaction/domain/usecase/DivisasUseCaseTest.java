@@ -62,7 +62,7 @@ class DivisasUseCaseTest {
                 accountVerificationGateway
         );
         lenient().when(accountVerificationGateway.verifyLoggedUser(anyString(), any()))
-                .thenAnswer(inv -> new VerifiedUserSession(inv.getArgument(0), "Test User", "jwt-token"));
+                .thenAnswer(inv -> new VerifiedUserSession(inv.getArgument(0), "Test User", "jwt-token", "USD"));
     }
 
     @Test
@@ -149,7 +149,8 @@ class DivisasUseCaseTest {
         Transaccion copExpenseDaily = buildTransaction(userId, new BigDecimal("10000.00"), "COP", TransaccionType.EXPENSE, FrecuenciaType.DAILY);
         Transaccion copIncomeWeekly = buildTransaction(userId, new BigDecimal("50000.00"), "COP", TransaccionType.INCOME, FrecuenciaType.WEEKLY);
         Transaccion copExpenseYearly = buildTransaction(userId, new BigDecimal("1200000.00"), "COP", TransaccionType.EXPENSE, FrecuenciaType.YEARLY);
-        Transaccion copOneTime = buildTransaction(userId, new BigDecimal("50000.00"), " ", TransaccionType.INCOME, null);
+        Transaccion copOneTime = buildTransaction(userId, new BigDecimal("50000.00"), "COP", TransaccionType.INCOME, null);
+        Transaccion blankCurrencyUsdTx = buildTransaction(userId, new BigDecimal("10.00"), " ", TransaccionType.INCOME, FrecuenciaType.ONE_TIME);
         CurrencyMetadata copMetadata = new CurrencyMetadata("COP", "Colombian peso", "$", List.of("Colombia"));
 
         when(currencyMetadataGateway.getCurrencyMetadata("COP")).thenReturn(copMetadata);
@@ -160,9 +161,11 @@ class DivisasUseCaseTest {
                 copIncomeWeekly,
                 copExpenseYearly,
                 copOneTime,
+                blankCurrencyUsdTx,
                 null
         ));
         when(exchangeRateGateway.getExchangeRate("EUR", "COP")).thenReturn(new BigDecimal("4350.00"));
+        when(exchangeRateGateway.getExchangeRate("USD", "COP")).thenReturn(new BigDecimal("4000.00"));
 
         // Act
         ConvertedBalance result = useCaseThreeArgs.convertirBalanceMensual(userId, "cop");
@@ -172,9 +175,10 @@ class DivisasUseCaseTest {
         assertEquals("Colombian peso", result.targetCurrencyName());
         assertEquals("$", result.targetCurrencySymbol());
         assertEquals(List.of("Colombia"), result.targetCurrencyCountries());
-        assertEquals(new BigDecimal("4200000.00"), result.convertedBalance());
-        assertEquals(6, result.transactionsProcessed());
+        assertEquals(new BigDecimal("4240000.00"), result.convertedBalance());
+        assertEquals(7, result.transactionsProcessed());
         verify(exchangeRateGateway, times(1)).getExchangeRate("EUR", "COP");
+        verify(exchangeRateGateway, times(1)).getExchangeRate("USD", "COP");
     }
 
     @Test

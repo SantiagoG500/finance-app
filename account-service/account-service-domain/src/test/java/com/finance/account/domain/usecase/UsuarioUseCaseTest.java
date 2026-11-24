@@ -154,7 +154,45 @@ class UsuarioUseCaseTest {
     }
 
     @Test
-    void actualizarUsuario_ShouldThrowException_WhenFullUpdateValidationsOrLookupFail() {
+    void actualizarUsuario_ShouldPreservePasswordAndActiveStatus_WhenOptionalFieldsAreNullOrBlank() {
+        // Arrange
+        UUID id = UUID.randomUUID();
+        Usuario existing = new Usuario(id, "juan@finance.com", "preserved_bcrypt_hash", "Juan", "https://old.png", "COP", true);
+        when(usuarioGateWay.obtenerUsuarioPorId(id)).thenReturn(existing);
+        when(usuarioGateWay.obtenerUsuarioPorEmail("juan@finance.com")).thenReturn(existing);
+        when(usuarioGateWay.actualizarUsuario(any(Usuario.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Act
+        Usuario resultNullOptional = usuarioUseCase.actualizarUsuario(
+                id,
+                "juan@finance.com",
+                null,
+                "Juan Actualizado",
+                "https://avatar.png",
+                "EUR",
+                null
+        );
+        Usuario resultBlankPassword = usuarioUseCase.actualizarUsuario(
+                id,
+                "juan@finance.com",
+                "   ",
+                "Juan Perfil",
+                "https://avatar2.png",
+                "MXN",
+                null
+        );
+
+        // Assert
+        assertEquals("preserved_bcrypt_hash", resultNullOptional.getPasswordHash());
+        assertTrue(resultNullOptional.getIsActive());
+        assertEquals("preserved_bcrypt_hash", resultBlankPassword.getPasswordHash());
+        assertEquals("MXN", resultBlankPassword.getBaseCurrency());
+        assertTrue(resultBlankPassword.getIsActive());
+        verifyNoInteractions(passwordEncoderGateway);
+    }
+
+    @Test
+    void actualizarUsuario_ShouldThrowException_WhenUpdateValidationsOrLookupFail() {
         // Arrange
         UUID id = UUID.randomUUID();
         UUID missingId = UUID.randomUUID();
@@ -167,19 +205,19 @@ class UsuarioUseCaseTest {
 
         // Act
         IllegalArgumentException exMissingFields = assertThrows(IllegalArgumentException.class,
-                () -> usuarioUseCase.actualizarUsuario(null, "a@b.com", "123456", "Name", "url", "COP", true));
+                () -> usuarioUseCase.actualizarUsuario(null, "a@b.com", null, "Name", "url", "COP", null));
         IllegalArgumentException exShortPass = assertThrows(IllegalArgumentException.class,
-                () -> usuarioUseCase.actualizarUsuario(id, "a@b.com", "123", "Name", "url", "COP", true));
+                () -> usuarioUseCase.actualizarUsuario(id, "a@b.com", "123", "Name", "url", "COP", null));
         IllegalArgumentException exUnsupportedCurrency = assertThrows(IllegalArgumentException.class,
-                () -> usuarioUseCase.actualizarUsuario(id, "a@b.com", "123456", "Name", "url", "JPY", true));
+                () -> usuarioUseCase.actualizarUsuario(id, "a@b.com", null, "Name", "url", "JPY", null));
         NoSuchElementException exNotFound = assertThrows(NoSuchElementException.class,
-                () -> usuarioUseCase.actualizarUsuario(missingId, "a@b.com", "123456", "Name", "url", "COP", true));
+                () -> usuarioUseCase.actualizarUsuario(missingId, "a@b.com", null, "Name", "url", "COP", null));
         IllegalStateException exDuplicateEmail = assertThrows(IllegalStateException.class,
-                () -> usuarioUseCase.actualizarUsuario(id, "taken@finance.com", "123456", "Name", "url", "COP", true));
+                () -> usuarioUseCase.actualizarUsuario(id, "taken@finance.com", null, "Name", "url", "COP", null));
 
         // Assert
         assertEquals("Todos los campos del usuario son obligatorios para la actualización completa", exMissingFields.getMessage());
-        assertEquals("Todos los campos del usuario son obligatorios para la actualización completa", exShortPass.getMessage());
+        assertEquals("La contraseña debe tener al menos 6 caracteres", exShortPass.getMessage());
         assertEquals("Moneda base no soportada", exUnsupportedCurrency.getMessage());
         assertEquals("Usuario no encontrado", exNotFound.getMessage());
         assertEquals("Ya existe una cuenta registrada con este correo electrónico", exDuplicateEmail.getMessage());

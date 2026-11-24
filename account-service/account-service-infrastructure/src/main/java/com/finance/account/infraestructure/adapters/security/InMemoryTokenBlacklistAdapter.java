@@ -66,9 +66,14 @@ public class InMemoryTokenBlacklistAdapter implements TokenBlacklistGateway {
         }
         purgeExpiredEntries();
         String normalizedEmail = email.trim().toLowerCase();
+        String trimmedToken = token.trim();
+        ActiveSessionEntry previous = activeSessions.get(normalizedEmail);
+        if (previous != null && !previous.token().equals(trimmedToken) && previous.expiresAt().isAfter(Instant.now())) {
+            revokedTokens.put(previous.token(), previous.expiresAt());
+        }
         Instant effectiveExpiration = expiresAt != null ? expiresAt : Instant.now().plusSeconds(3600);
         if (effectiveExpiration.isAfter(Instant.now())) {
-            activeSessions.put(normalizedEmail, new ActiveSessionEntry(token.trim(), effectiveExpiration));
+            activeSessions.put(normalizedEmail, new ActiveSessionEntry(trimmedToken, effectiveExpiration));
         }
     }
 
@@ -79,6 +84,19 @@ public class InMemoryTokenBlacklistAdapter implements TokenBlacklistGateway {
         }
         String trimmedToken = token.trim();
         activeSessions.entrySet().removeIf(entry -> trimmedToken.equals(entry.getValue().token()));
+    }
+
+    @Override
+    public void revokeActiveSessionByEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return;
+        }
+        purgeExpiredEntries();
+        String normalizedEmail = email.trim().toLowerCase();
+        ActiveSessionEntry previous = activeSessions.remove(normalizedEmail);
+        if (previous != null && previous.expiresAt().isAfter(Instant.now())) {
+            revokedTokens.put(previous.token(), previous.expiresAt());
+        }
     }
 
     private void purgeExpiredEntries() {

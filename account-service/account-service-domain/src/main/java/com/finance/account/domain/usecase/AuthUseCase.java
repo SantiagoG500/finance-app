@@ -87,16 +87,12 @@ public class AuthUseCase {
             throw new IllegalArgumentException("Credenciales inválidas");
         }
 
-        if (Boolean.FALSE.equals(usuario.getIsActive())) {
-            throw new IllegalStateException("La cuenta de usuario está desactivada");
-        }
-
         if (!passwordEncoderGateway.matches(rawPassword, usuario.getPasswordHash())) {
             throw new IllegalArgumentException("Credenciales inválidas");
         }
 
         if (tokenBlacklistGateway != null && tokenBlacklistGateway.hasActiveSession(normalizedEmail)) {
-            throw new IllegalStateException("El usuario ya tiene una sesión activa. Debe cerrar sesión antes de volver a iniciar.");
+            tokenBlacklistGateway.revokeActiveSessionByEmail(normalizedEmail);
         }
 
         String token = tokenGateway.generateToken(usuario.getId(), usuario.getEmail(), usuario.getFullName());

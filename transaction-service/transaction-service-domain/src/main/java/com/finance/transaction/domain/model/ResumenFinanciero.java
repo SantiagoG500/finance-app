@@ -10,6 +10,7 @@ import java.util.Map;
 public class ResumenFinanciero {
     private String usuarioId;
     private String moneda;
+    private String monedaBase;
     private BigDecimal ingresosMensuales;
     private BigDecimal gastosMensuales;
     private BigDecimal balanceNetoMensual;

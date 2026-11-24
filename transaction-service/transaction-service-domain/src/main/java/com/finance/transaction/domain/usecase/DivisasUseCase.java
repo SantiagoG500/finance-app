@@ -55,7 +55,7 @@ public class DivisasUseCase {
         if (externalUserId == null || externalUserId.isBlank()) {
             throw new IllegalArgumentException("El ID externo del usuario no puede ser nulo o vacío.");
         }
-        validateAccountSession(externalUserId, bearerToken);
+        String userBaseCurrency = validateAccountSession(externalUserId, bearerToken);
         if (targetCurrency == null || !targetCurrency.trim().toUpperCase().matches("^[A-Z]{3}$")) {
             throw new IllegalArgumentException("La moneda destino debe ser un código ISO de 3 letras");
         }
@@ -90,7 +90,7 @@ public class DivisasUseCase {
             );
         }
 
-        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(transacciones, normalizedTarget);
+        Map<String, BigDecimal> ratesCache = precalcularTasasDeCambio(transacciones, normalizedTarget, userBaseCurrency);
         BigDecimal totalConverted = BigDecimal.ZERO;
         int processedCount = 0;
 
@@ -99,8 +99,9 @@ public class DivisasUseCase {
                 continue;
             }
 
-            BigDecimal monthlyAmount = toMonthlyEquivalent(tx.getAmount(), tx.getFrequency());
-            String sourceCurrency = normalizeSourceCurrency(tx.getCurrency());
+            FrecuenciaType effectiveFrequency = tx.getFrequency() != null ? tx.getFrequency() : FrecuenciaType.ONE_TIME;
+            BigDecimal monthlyAmount = FrecuenciaType.normalizarMontoMensual(tx.getAmount(), effectiveFrequency);
+            String sourceCurrency = normalizeSourceCurrency(tx.getCurrency(), userBaseCurrency);
 
             BigDecimal convertedAmount;
             if (sourceCurrency.equals(normalizedTarget)) {
@@ -110,7 +111,7 @@ public class DivisasUseCase {
                 if (rate == null || rate.compareTo(BigDecimal.ZERO) <= 0) {
                     throw new IllegalArgumentException("Tasa de cambio no disponible para la moneda solicitada");
                 }
-                convertedAmount = monthlyAmount.multiply(rate);
+                convertedAmount = monthlyAmount.multiply(rate).setScale(2, RoundingMode.HALF_UP);
             }
 
             if (tx.getType() == TransaccionType.INCOME) {
@@ -132,13 +133,17 @@ public class DivisasUseCase {
         );
     }
 
-    private Map<String, BigDecimal> precalcularTasasDeCambio(List<Transaccion> transacciones, String normalizedTarget) {
+    private Map<String, BigDecimal> precalcularTasasDeCambio(
+            List<Transaccion> transacciones,
+            String normalizedTarget,
+            String userBaseCurrency
+    ) {
         Set<String> distinctSourceCurrencies = new LinkedHashSet<>();
         for (Transaccion tx : transacciones) {
             if (tx == null || tx.getAmount() == null || tx.getType() == null) {
                 continue;
             }
-            String sourceCurrency = normalizeSourceCurrency(tx.getCurrency());
+            String sourceCurrency = normalizeSourceCurrency(tx.getCurrency(), userBaseCurrency);
             if (!sourceCurrency.equals(normalizedTarget)) {
                 distinctSourceCurrencies.add(sourceCurrency);
             }
@@ -155,10 +160,13 @@ public class DivisasUseCase {
         return ratesCache;
     }
 
-    private String normalizeSourceCurrency(String rawCurrency) {
-        return (rawCurrency == null || rawCurrency.isBlank())
-                ? "COP"
-                : rawCurrency.trim().toUpperCase();
+    private String normalizeSourceCurrency(String rawCurrency, String fallbackBaseCurrency) {
+        if (rawCurrency == null || rawCurrency.isBlank()) {
+            return (fallbackBaseCurrency == null || fallbackBaseCurrency.isBlank())
+                    ? "USD"
+                    : fallbackBaseCurrency.trim().toUpperCase();
+        }
+        return rawCurrency.trim().toUpperCase();
     }
 
     public CurrencyMetadata consultarMetadatosMoneda(String currencyCode) {
@@ -208,24 +216,14 @@ public class DivisasUseCase {
         };
     }
 
-    private BigDecimal toMonthlyEquivalent(BigDecimal amount, FrecuenciaType frequency) {
-        if (frequency == null) {
-            return amount;
-        }
-        return switch (frequency) {
-            case DAILY -> amount.multiply(BigDecimal.valueOf(30));
-            case WEEKLY -> amount.multiply(BigDecimal.valueOf(4));
-            case YEARLY -> amount.divide(BigDecimal.valueOf(12), 6, RoundingMode.HALF_UP);
-            case MONTHLY, ONE_TIME -> amount;
-        };
-    }
-
-    private void validateAccountSession(String externalUserId, String bearerToken) {
+    private String validateAccountSession(String externalUserId, String bearerToken) {
         if (accountVerificationGateway != null) {
             VerifiedUserSession session = accountVerificationGateway.verifyLoggedUser(externalUserId, bearerToken);
             if (session == null || session.id() == null || session.id().isBlank()) {
                 throw new IllegalStateException("La sesión del usuario no pudo ser verificada");
             }
+            return session.resolvedBaseCurrency();
         }
+        return "USD";
     }
 }

@@ -13,4 +13,6 @@ public interface TokenBlacklistGateway {
     void registerActiveSession(String email, String token, Instant expiresAt);
 
     void clearActiveSessionByToken(String token);
+
+    void revokeActiveSessionByEmail(String email);
 }

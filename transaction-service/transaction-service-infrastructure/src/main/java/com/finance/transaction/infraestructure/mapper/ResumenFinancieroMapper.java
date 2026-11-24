@@ -18,8 +18,6 @@ public class ResumenFinancieroMapper {
 
     private final MetaAhorrosMapper metaAhorrosMapper;
 
-    // --- Domain -> DTO Mappings ---
-
     public ResumenFinancieroDTO resumenFinancieroToDto(ResumenFinanciero resumen) {
         if (resumen == null) {
             return null;
@@ -35,9 +33,12 @@ public class ResumenFinancieroMapper {
                 ? resumen.getPorCategoria()
                 : Collections.emptyMap();
 
+        String monedaBase = resumen.getMonedaBase() != null ? resumen.getMonedaBase() : resumen.getMoneda();
+
         return new ResumenFinancieroDTO(
                 resumen.getUsuarioId(),
                 resumen.getMoneda(),
+                monedaBase,
                 resumen.getIngresosMensuales(),
                 resumen.getGastosMensuales(),
                 resumen.getBalanceNetoMensual(),

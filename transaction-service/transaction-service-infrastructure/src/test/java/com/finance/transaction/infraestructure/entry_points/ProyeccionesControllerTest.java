@@ -42,6 +42,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 
+import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -97,9 +98,11 @@ class ProyeccionesControllerTest {
         ResumenFinanciero resumen = new ResumenFinanciero();
         resumen.setUsuarioId(userId);
         resumen.setMoneda("USD");
+        resumen.setMonedaBase("USD");
         ResumenFinancieroDTO dto = ResumenFinancieroDTO.builder()
                 .usuarioId(userId)
                 .moneda("USD")
+                .monedaBase("USD")
                 .ingresosMensuales(new BigDecimal("3000.00"))
                 .gastosMensuales(new BigDecimal("1000.00"))
                 .balanceNetoMensual(new BigDecimal("2000.00"))
@@ -119,6 +122,7 @@ class ProyeccionesControllerTest {
         // Assert
         response.andExpect(status().isOk())
                 .andExpect(jsonPath("$.usuarioId").value(userId))
+                .andExpect(jsonPath("$.monedaBase").value("USD"))
                 .andExpect(jsonPath("$.balanceNetoMensual").value(2000.00));
     }
 
@@ -217,7 +221,7 @@ class ProyeccionesControllerTest {
     }
 
     @Test
-    void shouldReturn400BadRequestWhenFeignNotFoundExceptionReachesHandler() throws Exception {
+    void shouldReturn400BadRequestWhenFeignNotFoundExceptionReachesHandlerForCurrencyProvider() throws Exception {
         // Arrange
         Request request = Request.create(Request.HttpMethod.GET, "/currency/XYZ", Collections.emptyMap(), null, new RequestTemplate());
         FeignException.NotFound notFound = new FeignException.NotFound("Not Found", request, null, Collections.emptyMap());
@@ -230,6 +234,45 @@ class ProyeccionesControllerTest {
         response.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.message").value("Moneda no soportada por el proveedor externo"));
+    }
+
+    @Test
+    void shouldReturnContextualized401Or403Or503WhenFeignExceptionComesFromAccountService() throws Exception {
+        // Arrange
+        Request usuariosReq = Request.create(Request.HttpMethod.GET, "http://localhost:8080/api/usuarios/get/" + userId, Collections.emptyMap(), null, new RequestTemplate());
+        Request authReq = Request.create(Request.HttpMethod.POST, "http://localhost:8080/api/auth/login", Collections.emptyMap(), null, new RequestTemplate());
+        FeignException.Unauthorized ex401 = new FeignException.Unauthorized("401", usuariosReq, null, Collections.emptyMap());
+        FeignException.NotFound ex404 = new FeignException.NotFound("404", usuariosReq, null, Collections.emptyMap());
+        FeignException.Forbidden ex403 = new FeignException.Forbidden("403", authReq, null, Collections.emptyMap());
+        FeignException.ServiceUnavailable ex503 = new FeignException.ServiceUnavailable("503", usuariosReq, null, Collections.emptyMap());
+
+        when(proyeccionesUseCase.calcularBalanceNeto(eq(userId), any()))
+                .thenThrow(ex401)
+                .thenThrow(ex404)
+                .thenThrow(ex403)
+                .thenThrow(ex503);
+
+        // Act
+        ResultActions res401 = mockMvc.perform(get("/api/v1/finances/balance"));
+        ResultActions res404As401 = mockMvc.perform(get("/api/v1/finances/balance"));
+        ResultActions res403 = mockMvc.perform(get("/api/v1/finances/balance"));
+        ResultActions res503 = mockMvc.perform(get("/api/v1/finances/balance"));
+
+        // Assert
+        res401.andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.message").value("No se pudo verificar la autenticación o cuenta del usuario en account-service"))
+                .andExpect(jsonPath("$.message", not("Moneda no soportada por el proveedor externo")));
+        res404As401.andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.message").value("No se pudo verificar la autenticación o cuenta del usuario en account-service"))
+                .andExpect(jsonPath("$.message", not("Moneda no soportada por el proveedor externo")));
+        res403.andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.message").value("Acceso denegado al verificar permisos de la cuenta en account-service"));
+        res503.andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.message").value("El servicio de cuentas (account-service) no está disponible temporalmente"));
     }
 
     @Test
@@ -290,6 +333,21 @@ class ProyeccionesControllerTest {
         assertNotNull(cacheManager.getCache("exchangeRates"));
         assertNotNull(cacheManager.getCache("currencyCodes"));
         assertNotNull(cacheManager.getCache("currencyMetadata"));
+    }
+
+    @Test
+    void shouldReturn403ForbiddenWhenDeactivatedAccountIllegalStateExceptionOccurs() throws Exception {
+        // Arrange
+        when(proyeccionesUseCase.calcularBalanceNeto(eq(userId), any()))
+                .thenThrow(new IllegalStateException("Cuenta desactivada. Reactiva tu cuenta para operar en transacciones y metas"));
+
+        // Act
+        ResultActions response = mockMvc.perform(get("/api/v1/finances/balance"));
+
+        // Assert
+        response.andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.message").value("Cuenta desactivada. Reactiva tu cuenta para operar en transacciones y metas"));
     }
 
     @Test

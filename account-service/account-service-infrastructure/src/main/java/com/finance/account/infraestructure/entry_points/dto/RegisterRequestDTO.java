@@ -22,6 +22,7 @@ public class RegisterRequestDTO {
     @Size(min = 6, message = "La contraseña debe tener al menos 6 caracteres")
     private String password;
 
+    @NotBlank(message = "El nombre completo es obligatorio")
     private String fullName;
 
 }
