@@ -1,0 +1,9 @@
+**/target/
+.git/
+.idea/
+.mvn/
+.agents/
+.gemini/
+*.iml
+.env
+.env.*
